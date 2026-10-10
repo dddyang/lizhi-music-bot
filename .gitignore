@@ -1,0 +1,63 @@
+# 环境变量与敏感配置（绝对禁止提交到 GitHub）
+.env
+.env.local
+.env.*.local
+askpass.cmd
+*.pem
+*.key
+
+# 数据库文件与缓存
+*.db
+*.sqlite
+*.sqlite3
+file_cache.json
+lyrics_bank_real.json
+
+# 日志与临时运行数据
+*.log
+bot.log
+.temp_audio/
+thumbnails/
+*.tmp
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# 音频与大文件（版权与体积限制，勿提交至 GitHub）
+*.flac
+*.mp3
+*.m4a
+*.wav
+*.ogg
+*.ape
+*.zip
+*.tar.gz
+*.rar
+
+# 测试与临时运行脚本
+test_*.py
+scratch/
+test_audio/
+patch_*.py
+inspect_*.py
+
+# 编辑器与操作系统缓存
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时脚本与图片
+*.bat
+*.jpg
+!bot/assets/*.jpg
+*.png
+*.zip

@@ -39,27 +39,45 @@ db = MusicDatabase(DB_PATH)
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 WELCOME_BANNER = ASSETS_DIR / "welcome_banner.jpg"
 
-# 录音室专辑分类
-STUDIO_ALBUM_NAMES = [
+# 1. 经典录音室创作专辑 (共9张，维基权威考据)
+STUDIO_ALBUMS = {
     "被禁忌的游戏", "梵高先生", "这个世界会好吗", "我爱南京",
-    "你好，郑州", "你好 郑州", "8", "F", "李志 1701",
+    "你好，郑州", "F", "李志 1701", "8",
     "在每一条伤心的应天大街上"
-]
+}
 
-# 现场专辑分类（官方现场与民间现场）
-LIVE_ALBUM_NAMES = [
+# 2. 官方现场演出专辑 (共14张)
+OFFICIAL_LIVE_ALBUMS = {
     "二零零九年十月十六日事件", "工体东路没有人", "我们也爱南京",
-    "义乌隔壁酒吧", "杭州酒球会一身酒气", "Imagine Live",
-    "“挺”不插电巡演 郑州站", "108个关键词", "勾三搭四", "I/O",
-    "动静 (2015 Live)", "动静（2015Live）",
-    "看见 (李志2015巡回演唱会)", "看见  李志2015巡回演唱会",
-    "李志LIVE精选", "金城兰州", "李志北京不插电现场 2016 Live",
-    "李志、电声与管弦乐", "李志、电声与管弦乐II",
-    "爵士乐与不插电新编12首", "洗心革面 跨年音乐会", "叁缺壹 (2024 Tokyo Live)"
-]
+    "Imagine Live", "勾三搭四", "108个关键词", "I/O",
+    "动静 (2015 Live)", "看见 (李志2015巡回演唱会)",
+    "李志北京不插电现场 2016 Live", "李志、电声与管弦乐",
+    "爵士乐与不插电新编12首", "李志、电声与管弦乐II", "叁缺壹 (2024 Tokyo Live)"
+}
 
-# 非官方专辑标识（民间现场录音与乐迷合辑）
+# 3. 海外限定精选、巡演专场录音与乐迷合辑 (共10张)
+SELECTION_AND_TOUR_ALBUMS = {
+    "Best Selection Songs 2004-2019 (Vol.1)",
+    "Best Selection Songs 2004-2018 (Vol.2)",
+    "Best Selection Songs 2004-2018 (Vol.3)",
+    "义乌隔壁酒吧", "杭州酒球会一身酒气", "“挺”不插电巡演 郑州站",
+    "金城兰州", "洗心革面 跨年音乐会", "杂选", "李志LIVE精选"
+}
+
+# 版本性质说明标签
 UNOFFICIAL_ALBUM_TAGS = {
+    "Best Selection Songs 2004-2019 (Vol.1)": {
+        "tag": "[日本限定精选]",
+        "desc": "⚠️ **版本性质**：`[日本限定精选辑]`（2019年日本波丽佳音出版，录音室名曲新编高品质归档）"
+    },
+    "Best Selection Songs 2004-2018 (Vol.2)": {
+        "tag": "[日本限定精选]",
+        "desc": "⚠️ **版本性质**：`[日本限定精选辑]`（2020年日本波丽佳音出版，现象级代表作海外限定精选）"
+    },
+    "Best Selection Songs 2004-2018 (Vol.3)": {
+        "tag": "[日本限定精选]",
+        "desc": "⚠️ **版本性质**：`[日本限定精选辑]`（《装蒜》Live 精选海外复刻版）"
+    },
     "义乌隔壁酒吧": {
         "tag": "[民间现场录音]",
         "desc": "⚠️ **版本性质**：`[民间现场录音]`（2009年“动物凶猛”巡演义乌收官战乐迷 Bootleg，含醉酒绝唱版《梵高先生》）"
@@ -74,7 +92,7 @@ UNOFFICIAL_ALBUM_TAGS = {
     },
     "洗心革面 跨年音乐会": {
         "tag": "[民间现场录音]",
-        "desc": "⚠️ **版本性质**：`[民间现场录音]`（2018-2019 欧拉跨年音乐会网易云高清独家直播提取切歌版，非官方实体唱片）"
+        "desc": "⚠️ **版本性质**：`[民间现场录音]`（2018-2019 欧拉跨年音乐会独家直播提取版，非官方实体唱片）"
     },
     "金城兰州": {
         "tag": "[民间现场录音]",
@@ -102,6 +120,12 @@ def format_duration(seconds: int) -> str:
     m, s = divmod(seconds, 60)
     return f"{m:02d}:{s:02d}"
 
+def escape_md(text: str) -> str:
+    """安全转义 Markdown 实体保留字符，防止 Telegram 消息发送失败"""
+    if not text:
+        return ""
+    return re.sub(r'([_*`\[])', r'\\\1', str(text))
+
 
 def get_welcome_text(stats: dict) -> str:
     songs_cnt = stats.get("songs", 0)
@@ -115,35 +139,39 @@ def get_welcome_text(stats: dict) -> str:
         f"📻 **音乐频道**：[点击进入李志音乐分享频道](https://t.me/libimusic)\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💡 **快捷功能导览：**\n"
-        f"• 💽 **录音室专辑**：经典录音室创作唱片\n"
-        f"• 🎸 **现场Live现场**：跨年、巡演、不插电现场全本\n"
-        f"• 📅 **唱片编年史**：按 2004~2024 年代时间轴浏览\n"
+        f"• 💽 **录音室专辑**：9 张经典经典录音室创作全集\n"
+        f"• 🎸 **官方现场Live**：14 张跨年、交响与巡演现场全本\n"
+        f"• 🗂️ **精选与合辑**：海外限定精选、巡演录音与散落Demo\n"
+        f"• 📅 **唱片编年史**：按 2004~2024 时间轴浏览全 33 张唱片\n"
         f"• 🎲 **随缘一曲**：随机推荐一首心动单曲\n"
-        f"• 🔍 **歌词/拼音搜索**：直接发送歌名或拼音缩写（如 `fgxs`、`郑州`）\n"
-        f"• 📝 **查看歌词**：每首歌曲卡片均支持查看完整歌词"
+        f"• 🔍 **歌词/拼音搜索**：直接发送歌名或拼音缩写（如 `fgxs`、`郑州`）"
     )
 
 
 def get_main_menu_markup() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    # 第一行：录音室 vs 现场
+    # 第一行：录音室 vs 官方现场
     builder.row(
-        InlineKeyboardButton(text="💿 录音室专辑", callback_data="cat:studio"),
-        InlineKeyboardButton(text="🎸 现场专辑 (Live)", callback_data="cat:live")
+        InlineKeyboardButton(text="💿 录音室专辑 (9张)", callback_data="cat:studio"),
+        InlineKeyboardButton(text="🎸 官方现场Live (14张)", callback_data="cat:live")
     )
-    # 第二行：心境场景电台 vs 每日歌词日签
+    # 第二行：精选/合辑 vs 唱片编年史
+    builder.row(
+        InlineKeyboardButton(text="🗂️ 精选与合辑专区 (10张)", callback_data="cat:selection"),
+        InlineKeyboardButton(text="📅 唱片编年史 (全33张)", callback_data="cat:chronology")
+    )
+    # 第三行：心境场景电台 vs 每日歌词日签
     builder.row(
         InlineKeyboardButton(text="🎧 心境场景电台", callback_data="menu:mood"),
         InlineKeyboardButton(text="📜 每日歌词日签", callback_data="menu:quote")
     )
-    # 第三行：编年史 vs 随机
+    # 第四行：随缘一曲 vs 词频大数据报告
     builder.row(
-        InlineKeyboardButton(text="📅 唱片编年史 (2004-2024)", callback_data="cat:chronology"),
-        InlineKeyboardButton(text="🎲 随缘一曲", callback_data="random_song")
+        InlineKeyboardButton(text="🎲 随缘一曲", callback_data="random_song"),
+        InlineKeyboardButton(text="📊 歌词大数据报告", callback_data="menu:stats")
     )
-    # 第四行：词频大数据报告 vs 音乐分享频道
+    # 第五行：音乐分享频道
     builder.row(
-        InlineKeyboardButton(text="📊 歌词大数据报告", callback_data="menu:stats"),
         InlineKeyboardButton(text="📢 音乐分享频道", url="https://t.me/libimusic")
     )
     return builder.as_markup()
@@ -154,9 +182,11 @@ def build_albums_markup_by_filter(filter_type: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     if filter_type == "studio":
-        filtered = [a for a in all_albums if any(k in a["album"] for k in STUDIO_ALBUM_NAMES)]
+        filtered = [a for a in all_albums if a["album"] in STUDIO_ALBUMS]
     elif filter_type == "live":
-        filtered = [a for a in all_albums if any(k in a["album"] for k in LIVE_ALBUM_NAMES)]
+        filtered = [a for a in all_albums if a["album"] in OFFICIAL_LIVE_ALBUMS]
+    elif filter_type == "selection":
+        filtered = [a for a in all_albums if a["album"] in SELECTION_AND_TOUR_ALBUMS]
     else:  # chronology / all
         filtered = all_albums
 
@@ -175,6 +205,7 @@ def build_albums_markup_by_filter(filter_type: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu")
     )
     return builder.as_markup()
+
 
 
 def get_song_control_markup(song_id: int, album_name: str) -> InlineKeyboardMarkup:
@@ -251,13 +282,14 @@ async def start_bot():
             f"你无需点击复杂菜单，直接在当前对话框中发送文字即可！\n\n"
             f"📌 **支持的搜索方式：**\n"
             f"1. **歌名全称或关键字**：如 `关于郑州的记忆`、`梵高`、`天空之城`\n"
-            f"2. **拼音首字母缩写**：如 `fgxs` (梵高先生)、`zz` (郑州)、`hzy` (和你在一起)\n"
+            f"2. **拼音首字母缩写**：如 `fgxs` (梵高先生)、`zz` (关于郑州的记忆)、`tkzc` (天空之城)、`syldxt` (山阴路的夏天)\n"
             f"3. **专辑名称**：如 `应天大街`、`1701`、`叁缺壹`\n"
             f"4. **全局行内分享**：在任意聊天框输入 `@{bot_me.username} 歌名` 实时搜索并卡片发送给好友！"
         )
         builder = InlineKeyboardBuilder()
         builder.button(text="🏠 返回主菜单", callback_data="main_menu")
         await message.answer(guide, reply_markup=builder.as_markup(), parse_mode="Markdown")
+
 
     async def show_quote_card(target, is_callback: bool = False):
         q = get_random_quote()
@@ -455,12 +487,14 @@ async def start_bot():
     async def cb_category(query: CallbackQuery):
         cat = query.data.split("cat:", 1)[1]
         titles = {
-            "studio": "💿 **李志经典录音室创作专辑列表：**",
-            "live": "🎸 **李志现场演出 / 巡演 / 跨年音乐会列表：**",
-            "chronology": "📅 **李志唱片编年史 (2004 — 2024 全集)：**"
+            "studio": "💿 **李志经典录音室创作专辑列表 (共9张)：**",
+            "live": "🎸 **李志官方现场Live专辑列表 (共14张)：**",
+            "selection": "🗂️ **李志海外精选、巡演专场与乐迷合辑 (共10张)：**",
+            "chronology": "📅 **李志唱片编年史 (2004 — 2024 全集33张)：**"
         }
         title_text = titles.get(cat, "💿 **请选择你想收听的专辑：**")
         markup = build_albums_markup_by_filter(cat)
+
 
         try:
             await query.message.edit_caption(caption=title_text, reply_markup=markup, parse_mode="Markdown")
@@ -552,8 +586,17 @@ async def start_bot():
                 reply_markup=markup
             )
 
+    SEND_ALL_COOLDOWN = {}
+
     @dp.callback_query(F.data.startswith("send_all:"))
     async def cb_send_all(query: CallbackQuery):
+        user_id = query.from_user.id
+        now_time = asyncio.get_event_loop().time()
+        if user_id in SEND_ALL_COOLDOWN and (now_time - SEND_ALL_COOLDOWN[user_id]) < 30:
+            await query.answer("⚠️ 正在推送中或操作过于频繁，请间隔 30 秒后再试！", show_alert=True)
+            return
+        SEND_ALL_COOLDOWN[user_id] = now_time
+
         album_name = query.data.split("send_all:", 1)[1]
         tracks = db.get_songs_by_album(album_name)
         if not tracks:
@@ -610,6 +653,11 @@ async def start_bot():
             await query.answer("暂未找到该歌曲的完整文字歌词", show_alert=True)
             return
 
+        # 防御 Telegram 4096 字符上限限制
+        if len(lyric_text) > 3600:
+            lyric_text = lyric_text[:3600] + "\n\n...(歌词篇幅较长，请配合音频收听完整版)..."
+
+
         await query.answer()
         builder = InlineKeyboardBuilder()
         builder.button(text="🎵 再次播放", callback_data=f"play:{song_id}")
@@ -663,7 +711,7 @@ async def start_bot():
             f"你无需点击复杂菜单，直接在当前对话框中给我发送文字即可！\n\n"
             f"📌 **支持的搜索方式：**\n"
             f"1. **歌名全称或关键字**：如 `关于郑州的记忆`、`梵高`、`天空之城`\n"
-            f"2. **拼音首字母缩写**：如 `fgxs` (梵高先生)、`zz` (郑州)、`hzy` (和你在一起)\n"
+            f"2. **拼音首字母缩写**：如 `fgxs` (梵高先生)、`zz` (关于郑州的记忆)、`tkzc` (天空之城)、`syldxt` (山阴路的夏天)\n"
             f"3. **专辑名称**：如 `应天大街`、`1701`、`叁缺壹`\n"
             f"4. **全局行内分享**：在任意聊天框输入 `@{(await bot.get_me()).username} 歌名` 实时搜索并卡片发送给好友！"
         )
@@ -684,11 +732,12 @@ async def start_bot():
         if query_text.startswith("/"):
             return
 
+        safe_query = escape_md(query_text)
         results = db.search_songs(query_text, limit=12)
         if not results:
             await message.answer(
-                f"🔍 抱歉，曲库中未找到与「`{query_text}`」相关的歌曲或专辑。\n"
-                f"你可以尝试输入歌名关键字或拼音缩写（如 `fgxs`、`郑州`）。",
+                f"🔍 抱歉，曲库中未找到与「`{safe_query}`」相关的歌曲或专辑。\n"
+                f"你可以尝试输入歌名关键字或拼音缩写（如 `fgxs`、`zz`、`tkzc`）。",
                 parse_mode="Markdown"
             )
             return
@@ -707,10 +756,11 @@ async def start_bot():
             InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu")
         )
         await message.answer(
-            f"🔍 找到以下包含「`{query_text}`」的曲目，点击即可直接收听：",
+            f"🔍 找到以下包含「`{safe_query}`」的曲目，点击即可直接收听：",
             reply_markup=builder.as_markup(),
             parse_mode="Markdown"
         )
+
 
     @dp.inline_query()
     async def handle_inline_query(inline_query: InlineQuery):

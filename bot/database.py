@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from contextlib import contextmanager
 from typing import List, Dict, Optional, Tuple
 
 try:
@@ -11,19 +12,36 @@ try:
         full = "".join(lazy_pinyin(text))
         first = "".join(lazy_pinyin(text, style=Style.FIRST_LETTER))
         return f"{full} {first}".lower()
+
+    def get_text_pinyin_parts(text: str) -> Tuple[str, str]:
+        """返回文本的全拼和首字母"""
+        if not text:
+            return "", ""
+        full = "".join(lazy_pinyin(text)).lower()
+        first = "".join(lazy_pinyin(text, style=Style.FIRST_LETTER)).lower()
+        return full, first
 except ImportError:
     def get_pinyin_tokens(text: str) -> str:
         return text.lower() if text else ""
+
+    def get_text_pinyin_parts(text: str) -> Tuple[str, str]:
+        return (text.lower(), text.lower()) if text else ("", "")
 
 class MusicDatabase:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_connection(self):
+        """提供具备自动关闭特性的 SQLite 连接上下文管理器"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
+
 
     def _init_db(self):
         """初始化数据库表结构与索引"""
@@ -129,29 +147,70 @@ class MusicDatabase:
             return [dict(row) for row in cursor.fetchall()]
 
     def search_songs(self, query: str, limit: int = 15) -> List[Dict]:
-        """按标题、专辑名或拼音模糊搜索"""
-        query = query.strip().lower()
-        if not query:
+        """按标题、专辑名或拼音智能加权搜索"""
+        q = query.strip().lower()
+        if not q:
             return []
 
-        pattern = f"%{query}%"
+        pattern = f"%{q}%"
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            # 宽表召回候选曲目（最多60首进入重排）
             cursor.execute("""
                 SELECT * FROM songs
                 WHERE LOWER(title) LIKE ? 
                    OR LOWER(album) LIKE ? 
                    OR pinyin LIKE ?
-                ORDER BY 
-                    CASE 
-                        WHEN LOWER(title) = ? THEN 1
-                        WHEN LOWER(title) LIKE ? THEN 2
-                        ELSE 3
-                    END,
-                    id ASC
-                LIMIT ?
-            """, (pattern, pattern, pattern, query, f"{query}%", limit))
-            return [dict(row) for row in cursor.fetchall()]
+                LIMIT 60
+            """, (pattern, pattern, pattern))
+            rows = [dict(row) for row in cursor.fetchall()]
+
+        if not rows:
+            return []
+
+        # 智能打分：歌名命中权重 > 专辑命中权重
+        def calculate_score(s: Dict) -> int:
+            title = s["title"].lower()
+            album = s["album"].lower()
+            t_full, t_first = get_text_pinyin_parts(title)
+            a_full, a_first = get_text_pinyin_parts(album)
+
+            # 1. 歌名完全匹配 (如搜 "梵高先生")
+            if title == q:
+                return 1000
+            # 2. 歌名首字母完全匹配 (如搜 "fgxs" 命中 "梵高先生")
+            if t_first == q:
+                return 900
+            # 3. 歌名首字母包含 (如搜 "zz" 命中 "关于郑州的记忆")
+            if q in t_first:
+                return 800
+            # 4. 歌名全拼完全匹配
+            if t_full == q:
+                return 750
+            # 5. 歌名全拼包含
+            if q in t_full:
+                return 700
+            # 6. 歌名文本包含 (如搜 "郑州")
+            if q in title:
+                return 600
+            # 7. 专辑完全匹配 (如搜 "1701")
+            if album == q:
+                return 400
+            # 8. 专辑首字母完全匹配
+            if a_first == q:
+                return 350
+            # 9. 专辑首字母包含
+            if q in a_first:
+                return 300
+            # 10. 专辑文本包含
+            if q in album:
+                return 200
+            return 100
+
+        # 按打分降序排列，相同得分按 ID 自然排序
+        rows.sort(key=lambda s: (calculate_score(s), -s["id"]), reverse=True)
+        return rows[:limit]
+
 
     def get_song_by_id(self, song_id: int) -> Optional[Dict]:
         """根据 ID 获取单曲信息"""

@@ -39,10 +39,10 @@ env["SSH_ASKPASS_REQUIRE"] = "force"
 env["DISPLAY"] = "dummy:0"
 
 try:
-    print(">>> 正在上传 bot.py, assets 静态资源, lyrics_bank.py 与 music.db 到 R2S (192.168.100.1)...")
+    print(">>> 正在上传 bot.py, config.py, assets 静态资源, lyrics_bank.py, mood_quotes.py 与 music.db 到 R2S (192.168.100.1)...")
     res = subprocess.run(
         ["scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-r",
-         "bot/bot.py", "bot/database.py", "bot/lyrics_bank.py", "bot/mood_quotes.py", "bot/assets", "music.db", "root@192.168.100.1:/root/tg-music-bot/"],
+         "bot/bot.py", "bot/config.py", "bot/database.py", "bot/lyrics_bank.py", "bot/mood_quotes.py", "bot/assets", "music.db", "requirements.txt", "root@192.168.100.1:/root/tg-music-bot/"],
         cwd=r"D:\AI\电报机器人",
         env=env,
         capture_output=True,

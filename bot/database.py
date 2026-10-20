@@ -248,6 +248,13 @@ class MusicDatabase:
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    def get_random_songs(self, limit: int = 10) -> List[Dict]:
+        """全曲库随机获取指定数量的单曲，用于行内搜索默认推荐等场景"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM songs ORDER BY RANDOM() LIMIT ?", (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+
     def get_all_songs(self) -> List[Dict]:
         """获取曲库中的所有曲目"""
         with self._get_connection() as conn:

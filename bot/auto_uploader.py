@@ -19,15 +19,13 @@ from aiogram.exceptions import TelegramRetryAfter, TelegramAPIError
 from aiogram.types import FSInputFile
 from mutagen import File as MutagenFile
 
-from config import BOT_TOKEN, CHANNEL_ID, DB_PATH
+from config import BOT_TOKEN, CHANNEL_ID, DB_PATH, MUSIC_ROOT, FFMPEG_PATH
 from database import MusicDatabase
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("AutoUploader")
 
-MUSIC_ROOT = Path(r"Z:\音乐\李志")
 TEMP_DIR = Path(__file__).resolve().parent / ".temp_audio"
-FFMPEG_PATH = Path(r"D:\AI\剪映\JianyingPro\11.5.3.14501\ffmpeg.exe")
 
 # 50MB 阈值 (Telegram Bot API 上传限制)
 MAX_BOT_FILE_SIZE = 49 * 1024 * 1024

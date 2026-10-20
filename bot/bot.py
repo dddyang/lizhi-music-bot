@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 import re
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import List, Dict
 
@@ -30,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(name)s] %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE, encoding="utf-8")
+        RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
     ]
 )
 logger = logging.getLogger("LiZhiMusicBot")
@@ -38,6 +39,10 @@ logger = logging.getLogger("LiZhiMusicBot")
 db = MusicDatabase(DB_PATH)
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 WELCOME_BANNER = ASSETS_DIR / "welcome_banner.jpg"
+
+# 全局用户状态（内存）
+MOOD_HISTORY: Dict[int, List[int]] = {}   # user_id -> 最近播放过的 song_id 列表（电台去重）
+USER_LAST_CAT: Dict[int, str] = {}        # user_id -> 最后浏览的专辑分类（记忆返回）
 
 # 1. 经典录音室创作专辑 (共9张，维基权威考据)
 STUDIO_ALBUMS = {
@@ -299,7 +304,7 @@ async def start_bot():
         card = (
             f"📜 **李志歌词日签 · Daily Lyric Card**\n"
             f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"「 **{q['quote']}** 」\n\n"
+            f"「 **{escape_md(q['quote'])}** 」\n\n"
             f"🎵 **出处**：《{q['title']}》\n"
             f"💿 **专辑**：《{q['album']}》 ({q['year']}年)\n"
             f"🎸 **词曲**：李志\n"
@@ -410,10 +415,24 @@ async def start_bot():
             found = db.search_songs(kw, limit=5)
             candidates.extend(found)
 
-        song = random.choice([s for s in candidates if s]) if candidates else db.get_random_song()
+        # 电台去重：过滤掉该用户最近 10 首听过的歌
+        user_id = query.from_user.id
+        recent_ids = MOOD_HISTORY.get(user_id, [])
+        fresh = [s for s in candidates if s and s["id"] not in recent_ids]
+        if not fresh:
+            # 全部听完一轮，重置历史再选取
+            fresh = [s for s in candidates if s]
+            MOOD_HISTORY[user_id] = []
+
+        song = random.choice(fresh) if fresh else db.get_random_song()
         if not song:
             await query.answer("电台暂时没有匹配曲目", show_alert=True)
             return
+
+        # 更新去重历史（保留最近 10 首）
+        history = MOOD_HISTORY.get(user_id, [])
+        history.append(song["id"])
+        MOOD_HISTORY[user_id] = history[-10:]
 
         year_str = f" [{song['year']}年]" if song.get("year") else ""
         tag = get_album_tag(song["album"])
@@ -434,25 +453,29 @@ async def start_bot():
         caption = (
             f"🎧 **【{mood['title']}】主题电台**\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🎵 **{song['title']}** - 《{song['album']}》{year_str}{tag_str}\n"
+            f"🎵 **{escape_md(song['title'])}** - 《{escape_md(song['album'])}》{year_str}{tag_str}\n"
             f"💬 _{mood['desc']}_\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 李志音乐点播站 [@libi\_music\_bot](https://t.me/libi_music_bot)"
+            f"💡 李志音乐点播站 [@libi\\_music\\_bot](https://t.me/libi_music_bot)"
         )
 
         try:
+            # 优先 copy_message（不传非法 caption，保持音频原貌）
             await bot.copy_message(
                 chat_id=query.message.chat.id,
                 from_chat_id=song["channel_id"],
                 message_id=song["message_id"],
-                caption=caption,
                 reply_markup=builder.as_markup()
             )
+            # 再附送电台主题卡片
+            await query.message.answer(caption, parse_mode="Markdown", disable_web_page_preview=True)
         except Exception:
+            # fallback: 直接用 file_id 独立发送并附带 caption
             await bot.send_audio(
                 chat_id=query.message.chat.id,
                 audio=song["file_id"],
                 caption=caption,
+                parse_mode="Markdown",
                 reply_markup=builder.as_markup()
             )
 
@@ -486,6 +509,7 @@ async def start_bot():
     @dp.callback_query(F.data.startswith("cat:"))
     async def cb_category(query: CallbackQuery):
         cat = query.data.split("cat:", 1)[1]
+        USER_LAST_CAT[query.from_user.id] = cat   # 记住用户当前浏览的分类
         titles = {
             "studio": "💿 **李志经典录音室创作专辑列表 (共9张)：**",
             "live": "🎸 **李志官方现场Live专辑列表 (共14张)：**",
@@ -522,9 +546,17 @@ async def start_bot():
             )
         builder.adjust(1)
 
-        # 底部操作栏
+        # 底部操作栏：返回到用户上一次浏览的分类（而非固定跳编年史）
+        last_cat = USER_LAST_CAT.get(query.from_user.id, "chronology")
+        cat_labels = {
+            "studio": "💿 录音室专辑",
+            "live": "🎸 官方现场Live",
+            "selection": "🗂️ 精选与合辑",
+            "chronology": "📅 编年史",
+        }
+        back_label = f"🔙 返回{cat_labels.get(last_cat, '专辑分类')}"
         builder.row(
-            InlineKeyboardButton(text="🔙 返回专辑分类", callback_data="cat:chronology"),
+            InlineKeyboardButton(text=back_label, callback_data=f"cat:{last_cat}"),
             InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu")
         )
 
@@ -665,13 +697,13 @@ async def start_bot():
         builder.adjust(2)
 
         lyric_card = (
-            f"📝 **《{title}》· 歌词**\n"
-            f"💿 专辑：《{album}》{year_str}{tag_str}\n"
+            f"📝 **《{escape_md(title)}》· 歌词**\n"
+            f"💿 专辑：《{escape_md(album)}》{year_str}{tag_str}\n"
             f"🎸 词曲 / 演唱：李志\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"{lyric_text}\n\n"
+            f"{escape_md(lyric_text)}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 李志音乐点播站 [@libi\_music\_bot](https://t.me/libi_music_bot)"
+            f"💡 李志音乐点播站 [@libi\\_music\\_bot](https://t.me/libi_music_bot)"
         )
         await query.message.answer(lyric_card, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
@@ -765,7 +797,7 @@ async def start_bot():
     @dp.inline_query()
     async def handle_inline_query(inline_query: InlineQuery):
         q = inline_query.query.strip()
-        results = db.search_songs(q, limit=20) if q else []
+        results = db.search_songs(q, limit=20) if q else db.get_random_songs(limit=10)
         articles = []
         for s in results:
             year_str = f" [{s['year']}年]" if s.get("year") else ""
@@ -778,7 +810,8 @@ async def start_bot():
                     caption=f"🎵 {s['title']} - 《{s['album']}》{year_str}{tag_str} | 李志"
                 )
             )
-        await inline_query.answer(articles, cache_time=30, is_personal=True)
+        cache_duration = 60 if q else 10
+        await inline_query.answer(articles, cache_time=cache_duration, is_personal=True)
 
     try:
         await bot.set_my_commands([

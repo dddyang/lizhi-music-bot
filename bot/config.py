@@ -16,4 +16,14 @@ if _raw_channel_id.startswith("-100") or _raw_channel_id.isdigit() or (_raw_chan
 else:
     CHANNEL_ID = _raw_channel_id
 
-DB_PATH = str(BASE_DIR / os.getenv("DB_PATH", "music.db"))
+_db_env = os.getenv("DB_PATH", "music.db")
+if (BASE_DIR / _db_env).exists() and (BASE_DIR / _db_env).stat().st_size > 100000:
+    DB_PATH = str(BASE_DIR / _db_env)
+elif (BASE_DIR.parent / _db_env).exists():
+    DB_PATH = str(BASE_DIR.parent / _db_env)
+else:
+    DB_PATH = str(BASE_DIR / _db_env)
+
+# 本地曲库与转码工具路径（用于 auto_uploader.py）
+MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", r"Z:\音乐\李志"))
+FFMPEG_PATH = Path(os.getenv("FFMPEG_PATH", r"D:\AI\剪映\JianyingPro\11.5.3.14501\ffmpeg.exe"))

@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>李志音乐 · 沉浸黑胶播放器</title>
+  <!-- Telegram Web App 原生 SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- 静态数据源 -->
+  <script src="data.js"></script>
+  <style>
+    :root {
+      --bg-color: #0b0d10;
+      --card-bg: rgba(26, 30, 36, 0.65);
+      --accent-color: #d4a373;
+      --accent-glow: rgba(212, 163, 115, 0.5);
+      --text-main: #f0f2f5;
+      --text-sub: #9aa1a9;
+      --border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      min-height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* 动态毛玻璃环境辉光背景 */
+    .ambient-bg {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-size: cover;
+      background-position: center;
+      filter: blur(60px) brightness(0.28) saturate(1.9);
+      transform: scale(1.2);
+      z-index: 0;
+      transition: background-image 0.8s ease-in-out;
+    }
+
+    .ambient-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: radial-gradient(circle at center, rgba(11, 13, 16, 0.3) 0%, rgba(11, 13, 16, 0.92) 100%);
+      z-index: 1;
+    }
+
+    /* 主界面布局容器 */
+    .app-container {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      padding: env(safe-area-inset-top, 16px) 20px env(safe-area-inset-bottom, 20px) 20px;
+    }
+
+    /* 顶部导航 */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      flex-shrink: 0;
+    }
+
+    .header-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+    }
+
+    .header-btn:active {
+      transform: scale(0.92);
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .header-title {
+      text-align: center;
+      max-width: 65%;
+    }
+
+    .header-title h1 {
+      font-size: 16px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.3px;
+    }
+
+    .header-title p {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+
+    /* 中间舞台区域 (黑胶唱片 vs 歌词) */
+    .stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      perspective: 1200px;
+      margin: 8px 0;
+      min-height: 0;
+    }
+
+    /* 金属唱针机构 (Tonearm) */
+    .tonearm-box {
+      position: absolute;
+      top: -24px;
+      right: 12%;
+      width: 85px;
+      height: 140px;
+      z-index: 10;
+      transform-origin: 30px 20px;
+      transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      transform: rotate(-32deg);
+    }
+
+    .tonearm-box.playing {
+      transform: rotate(0deg);
+    }
+
+    /* 唱片与歌词翻转容器 */
+    .flip-card {
+      width: min(80vw, 320px);
+      height: min(80vw, 320px);
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+
+    .flip-card.flipped {
+      transform: rotateY(180deg);
+    }
+
+    .card-face {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+    }
+
+    /* 黑胶唱片正面 */
+    .vinyl-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle, #080808 0%, #151515 100%);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.8),
+                  0 0 0 6px #1c1c1f,
+                  0 0 0 10px #080808;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: rotateVinyl 22s linear infinite;
+      animation-play-state: paused;
+    }
+
+    .vinyl-wrapper.playing {
+      animation-play-state: running;
+    }
+
+    @keyframes rotateVinyl {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .vinyl-grooves {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      border-radius: 50%;
+      background: repeating-radial-gradient(
+        circle,
+        rgba(255, 255, 255, 0.02) 0,
+        rgba(255, 255, 255, 0.02) 2px,
+        transparent 3px,
+        transparent 5px
+      );
+      pointer-events: none;
+    }
+
+    .vinyl-glare {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      border-radius: 50%;
+      background: conic-gradient(
+        from 45deg,
+        rgba(255, 255, 255, 0.12) 0deg,
+        transparent 55deg,
+        rgba(255, 255, 255, 0.08) 180deg,
+        transparent 235deg,
+        rgba(255, 255, 255, 0.12) 360deg
+      );
+      pointer-events: none;
+    }
+
+    .vinyl-label {
+      width: 44%;
+      height: 44%;
+      border-radius: 50%;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.6);
+      z-index: 2;
+    }
+
+    .vinyl-label img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .center-hole {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #080808;
+      border: 3px solid #333;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+    }
+
+        /* 背面：超轻透磨砂毛玻璃歌词卡 (通透高质感) */
+    .lyrics-view {
+      transform: rotateY(180deg);
+      border-radius: 28px;
+      /* 极致轻透的磨砂毛玻璃背景，让环境辉光与光影流动完全透出 */
+      background: rgba(18, 22, 28, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35), inset 0 0 40px rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .lyrics-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--accent-color);
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .lyrics-content {
+      flex: 1;
+      padding: 20px 16px;
+      overflow-y: auto;
+      text-align: center;
+      scroll-behavior: smooth;
+      mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+    }
+
+    .lyrics-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    .lyric-line {
+      font-size: 15px;
+      line-height: 2.3;
+      color: rgba(255, 255, 255, 0.45);
+      transition: all 0.25s ease;
+      cursor: pointer;
+    }
+
+    .lyric-line:hover {
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .lyric-line.active {
+      color: #ffffff;
+      font-size: 17px;
+      font-weight: 600;
+      text-shadow: 0 0 16px var(--accent-glow);
+      transform: scale(1.05);
+    }
+
+    /* 唱片下方的金句条 */
+    .quote-bar {
+      margin-top: 16px;
+      padding: 9px 16px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      backdrop-filter: blur(12px);
+      max-width: 90%;
+      text-align: center;
+      font-size: 13px;
+      color: var(--accent-color);
+      font-style: italic;
+      letter-spacing: 0.3px;
+      line-height: 1.5;
+    }
+
+    /* 播放控制条区域 */
+    .player-controls {
+      flex-shrink: 0;
+      padding-bottom: 6px;
+    }
+
+    .progress-box {
+      margin-bottom: 12px;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent-color);
+      border-radius: 3px;
+      width: 0%;
+      position: relative;
+    }
+
+    .progress-bar-handle {
+      position: absolute;
+      right: -6px;
+      top: -4px;
+      width: 13px;
+      height: 13px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+    }
+
+    .time-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-sub);
+      margin-top: 5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 核心操作按钮组 */
+    .btn-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 10px;
+    }
+
+    .ctrl-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-size: 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    .ctrl-btn:active {
+      transform: scale(0.88);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .play-btn {
+      width: 62px;
+      height: 62px;
+      background: var(--accent-color);
+      color: #121417;
+      border-radius: 50%;
+      font-size: 24px;
+      box-shadow: 0 8px 24px var(--accent-glow);
+    }
+
+    .play-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* 抽屉式播放列表 (融入机器人选歌逻辑) */
+    .drawer-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .playlist-drawer {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      height: 80vh;
+      background: #15181e;
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
+      border-top: 1px solid var(--border-color);
+      z-index: 101;
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.33, 1, 0.68, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.7);
+    }
+
+    .playlist-drawer.open {
+      transform: translateY(0);
+    }
+
+    .drawer-header {
+      padding: 16px 20px 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .drawer-header h3 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    /* 搜索框 */
+    .search-input-box {
+      padding: 0 16px 10px 16px;
+      flex-shrink: 0;
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 9px 14px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-color);
+    }
+
+    /* 机器人同款分类胶囊导航栏 (Filter Pills) */
+    .category-pills {
+      display: flex;
+      gap: 8px;
+      padding: 0 16px 12px 16px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .category-pills::-webkit-scrollbar {
+      display: none;
+    }
+
+    .cat-pill {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      color: var(--text-sub);
+      padding: 6px 13px;
+      border-radius: 16px;
+      font-size: 13px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .cat-pill:active {
+      transform: scale(0.95);
+    }
+
+    .cat-pill.active {
+      background: var(--accent-color);
+      color: #121417;
+      font-weight: 600;
+      border-color: var(--accent-color);
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+
+    .drawer-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 12px;
+    }
+
+    .track-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 2px;
+      transition: background 0.15s ease;
+    }
+
+    .track-item:active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .track-item.current {
+      background: rgba(212, 163, 115, 0.14);
+    }
+
+    .track-item.current .t-title {
+      color: var(--accent-color);
+      font-weight: 600;
+    }
+
+    .t-index {
+      width: 28px;
+      font-size: 13px;
+      color: var(--text-sub);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .t-info {
+      flex: 1;
+      min-width: 0;
+      margin-right: 10px;
+    }
+
+    .t-title {
+      font-size: 14.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .t-meta {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .t-badge {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #b0b8c4;
+      margin-left: 4px;
+    }
+
+    .t-btn-link {
+      color: var(--text-sub);
+      font-size: 17px;
+      padding: 6px;
+    }
+
+    .empty-tip {
+      text-align: center;
+      color: var(--text-sub);
+      font-size: 14px;
+      margin-top: 50px;
+    }
+  
+    /* 频道原生连播唤起提示 (Toast) */
+    .play-toast {
+      position: fixed;
+      top: 68px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(18, 22, 28, 0.94);
+      border: 1px solid rgba(212, 163, 115, 0.5);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 24px;
+      font-size: 13px;
+      text-align: center;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s cubic-bezier(0.33, 1, 0.68, 1);
+      line-height: 1.5;
+    }
+    .play-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .play-toast b {
+      color: var(--accent-color);
+    }
+    .channel-hint-pill {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--accent-color);
+      opacity: 0.9;
+      background: rgba(212, 163, 115, 0.12);
+      border: 1px solid rgba(212, 163, 115, 0.28);
+      padding: 6px 16px;
+      border-radius: 20px;
+      display: inline-block;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .channel-hint-pill:active {
+      transform: scale(0.96);
+      background: rgba(212, 163, 115, 0.25);
+    }
+
+    /* 精致矢量按钮样式，替代塑料感 Emoji */
+    .ctrl-svg {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vertical-align: middle;
+      transition: transform 0.15s ease, stroke 0.2s ease;
+    }
+    .ctrl-btn:hover .ctrl-svg {
+      color: var(--accent-color);
+      transform: scale(1.08);
+    }
+    .play-btn .ctrl-svg {
+      width: 26px;
+      height: 26px;
+      stroke-width: 2.4;
+      fill: #15181e;
+      stroke: #15181e;
+    }
+
+    /* 左侧分类规则面板 (唱片编年大典) */
+    .guide-drawer {
+      position: fixed;
+      left: 0; top: 0; bottom: 0;
+      width: min(85vw, 360px);
+      background: rgba(21, 24, 30, 0.96);
+      border-right: 1px solid var(--border-color);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      z-index: 102;
+      transform: translateX(-100%);
+      transition: transform 0.35s cubic-bezier(0.33, 1, 0.68, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 10px 0 40px rgba(0, 0, 0, 0.7);
+    }
+    .guide-drawer.open {
+      transform: translateX(0);
+    }
+    .guide-content {
+      padding: 18px 20px 40px 20px;
+      overflow-y: auto;
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: var(--text-sec);
+    }
+    .guide-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .guide-card-title {
+      font-weight: 600;
+      color: var(--accent-color);
+      font-size: 14px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .guide-tag {
+      font-size: 11px;
+      background: rgba(212, 163, 115, 0.16);
+      color: var(--accent-color);
+      padding: 2px 7px;
+      border-radius: 6px;
+      margin-left: auto;
+    }
+</style>
+</head>
+<body>
+  <div class="play-toast" id="playToast">🎧 已唤起频道原生播放</div>
+  <div class="ambient-bg" id="ambientBg"></div>
+  <div class="ambient-overlay"></div>
+
+  <audio id="audioPlayer"></audio>
+
+  <div class="app-container">
+    <header class="header">
+      <button class="header-btn" onclick="toggleGuideDrawer()" title="唱片分类规则大典">
+        <svg class="ctrl-svg" viewBox="0 0 24 24" style="width:18px;height:18px;">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          <line x1="8" y1="6" x2="16" y2="6"></line>
+          <line x1="8" y1="10" x2="16" y2="10"></line>
+        </svg>
+      </button>
+      <div class="header-title">
+        <h1 id="topTitle">李志音乐 · 随身云听</h1>
+        <p id="topSubtitle">35张专辑 · 529首编年典藏</p>
+      </div>
+      <button class="header-btn" onclick="openChannel()">📻</button>
+    </header>
+
+    <main class="stage">
+      <div class="tonearm-box" id="tonearm">
+        <svg viewBox="0 0 100 160" width="85" height="140">
+          <circle cx="30" cy="20" r="14" fill="#3a3d45" stroke="#1f2229" stroke-width="4"/>
+          <circle cx="30" cy="20" r="6" fill="#d4a373"/>
+          <path d="M30 20 L45 80 L38 120 L28 135" fill="none" stroke="#717682" stroke-width="5" stroke-linecap="round"/>
+          <rect x="20" y="132" width="16" height="24" rx="3" transform="rotate(-15 28 135)" fill="#2a2c33" stroke="#d4a373" stroke-width="1.5"/>
+        </svg>
+      </div>
+
+      <!-- 翻转卡片 (黑胶 ⇆ 轻透毛玻璃歌词) -->
+      <div class="flip-card" id="flipCard" onclick="toggleFlip()">
+        <!-- 正面：黑胶唱片 -->
+        <div class="card-face">
+          <div class="vinyl-wrapper" id="vinyl">
+            <div class="vinyl-grooves"></div>
+            <div class="vinyl-glare"></div>
+            <div class="vinyl-label">
+              <img id="trackCover" src="covers/default_banner.jpg" alt="Cover">
+              <div class="center-hole"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 背面：超通透半透明歌词视窗 -->
+        <div class="card-face lyrics-view">
+          <div class="lyrics-header">
+            <span id="lyricHeaderSong">歌词沉浸流</span>
+            <span>点击唱片翻回 ↻</span>
+          </div>
+          <div class="lyrics-content" id="lyricsContent">
+            <div class="lyric-line active" style="margin-top:60px;">纯器乐演奏曲目<br>闭上双眼，聆听旋律在空气中流淌</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="quote-bar" id="quoteBar">
+        “关于郑州我想的全是你，想来生活无非是痛苦和美丽。”
+      </div>
+    </main>
+
+    <footer class="player-controls">
+      <div class="progress-box">
+        <div class="progress-bar-container" id="progressBar" onclick="seekAudio(event)">
+          <div class="progress-bar-fill" id="progressFill">
+            <div class="progress-bar-handle"></div>
+          </div>
+        </div>
+        <div class="time-info">
+          <span id="currentTime">00:00</span>
+          <span id="totalDuration">00:00</span>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <!-- 循环模式 -->
+        <button class="ctrl-btn" onclick="togglePlayMode()" id="playModeBtn" title="播放模式">
+          <svg class="ctrl-svg" id="playModeIcon" viewBox="0 0 24 24">
+            <polyline points="17 1 21 5 17 9"></polyline>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+            <polyline points="7 23 3 19 7 15"></polyline>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+          </svg>
+        </button>
+
+        <!-- 上一曲 -->
+        <button class="ctrl-btn" onclick="prevTrack()" title="上一首">
+          <svg class="ctrl-svg" viewBox="0 0 24 24">
+            <polygon points="19 20 9 12 19 4 19 20" fill="currentColor"></polygon>
+            <line x1="5" y1="19" x2="5" y2="5"></line>
+          </svg>
+        </button>
+
+        <!-- 播放/暂停大圆盘按钮 -->
+        <button class="ctrl-btn play-btn" onclick="togglePlay()" id="playBtn" title="播放/暂停">
+          <svg class="ctrl-svg" id="playIconSvg" viewBox="0 0 24 24" style="margin-left:2px;">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </button>
+
+        <!-- 下一曲 -->
+        <button class="ctrl-btn" onclick="nextTrack()" title="下一首">
+          <svg class="ctrl-svg" viewBox="0 0 24 24">
+            <polygon points="5 4 15 12 5 20 5 4" fill="currentColor"></polygon>
+            <line x1="19" y1="5" x2="19" y2="19"></line>
+          </svg>
+        </button>
+
+        <!-- 右下角：曲库列表抽屉 -->
+        <button class="ctrl-btn" onclick="toggleDrawer()" title="打开播放列表">
+          <svg class="ctrl-svg" viewBox="0 0 24 24">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  
+  <!-- 左侧分类规则大典抽屉 -->
+  <div class="drawer-overlay" id="guideOverlay" onclick="toggleGuideDrawer()"></div>
+  <div class="guide-drawer" id="guideDrawer">
+    <div class="drawer-header" style="border-bottom: 1px solid var(--border-color);">
+      <h3 style="font-size:15px; display:flex; align-items:center; gap:8px;">
+        <span>📖</span> 李志唱片编年分类大典
+      </h3>
+      <button class="header-btn" style="width:30px;height:30px;font-size:14px;" onclick="toggleGuideDrawer()">✕</button>
+    </div>
+    <div class="guide-content">
+      <p style="margin-bottom:14px; font-size:12.5px; opacity:0.8;">
+        本馆收录李志 2004～2024 二十年创作生涯全部 35 张考证唱片与 529 首全曲目，严格按四大类别与编年归档：
+      </p>
+
+      <div class="guide-card">
+        <div class="guide-card-title">
+          <span>💿 经典录音室全集</span>
+          <span class="guide-tag">9 张专辑</span>
+        </div>
+        <p>正规母带录音室制作典藏。《被禁忌的游戏》《梵高先生》《这个世界会好吗》《我爱南京》《你好，郑州》《F》《1701》《在每一条伤心的应天大街上》《新世纪的怪儿》等。</p>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">
+          <span>🎸 官方现场 Live & 跨年</span>
+          <span class="guide-tag">15 张唱片</span>
+        </div>
+        <p>大编制管弦、电音与跨年工体经典演出现场。《勾芡》《降噪》《动静》《工体东路》《看见》《北京不高兴》《爵士李志》《电音李志》《装B》《二零一三》等。</p>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">
+          <span>🇯🇵 日本与海外限定</span>
+          <span class="guide-tag">4 张唱片</span>
+        </div>
+        <p>P-VINE 海外授权发行与东瀛现场。《Ballads (2017 东京)》《Selected Songs》《Best Selection (洗心革面)》及东京独奏现场。</p>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">
+          <span>⚠️ 珍稀民间现场与合辑</span>
+          <span class="guide-tag">7 张合辑</span>
+        </div>
+        <p>早期珍贵小剧场实录、乐迷私藏与不完全合辑。《单飞》《动静合辑》《吉他弹唱未发表作品》《卡夫卡的不完全李志》等民间绝版。</p>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">
+          <span>🏙️ 城市地标与编年时光轴</span>
+          <span class="guide-tag">地标 & 20年</span>
+        </div>
+        <p>贯穿南京（热河、山阴路、定西）、郑州、成都等地理记忆，从 2004 早期毛糙弹唱到 2024 近期重制，完整呈现一代独立民谣史诗。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 抽屉式播放列表 (全套机器人选歌逻辑) -->
+  <div class="drawer-overlay" id="drawerOverlay" onclick="toggleDrawer()"></div>
+  <div class="playlist-drawer" id="playlistDrawer">
+    <div class="drawer-header">
+      <h3 id="drawerTitle">选歌分类库 (529首)</h3>
+      <button class="header-btn" style="width:32px;height:32px;font-size:14px;" onclick="toggleDrawer()">✕</button>
+    </div>
+
+    <!-- 搜索栏 -->
+    <div class="search-input-box">
+      <input type="text" class="search-input" id="searchInput" placeholder="🔍 快速搜索歌名、拼音缩写 (fgxs)、歌词 (港岛妹妹)..." oninput="filterPlaylist()">
+    </div>
+
+    <!-- 机器人同款分类胶囊导航栏 -->
+    <div class="category-pills">
+      <div class="cat-pill active" onclick="switchCategory('all', this)">🌟 全部 (529)</div>
+      <div class="cat-pill" onclick="switchCategory('studio', this)">💿 经典录音室 (9张)</div>
+      <div class="cat-pill" onclick="switchCategory('live', this)">🎸 官方现场Live (15张)</div>
+      <div class="cat-pill" onclick="switchCategory('japan', this)">🇯🇵 日本与东京 (4张)</div>
+      <div class="cat-pill" onclick="switchCategory('bootleg', this)">⚠️ 民间现场合辑 (7张)</div>
+      <div class="cat-pill" onclick="switchCategory('city', this)">🏙️ 城市地标专区</div>
+      <div class="cat-pill" onclick="switchCategory('era', this)">⏳ 20年编年时光机</div>
+      <div class="cat-pill" onclick="randomPlayFromDrawer()">🎲 随缘盲盒</div>
+    </div>
+
+    <!-- 列表展示区 -->
+    <div class="drawer-list" id="drawerList"></div>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      try { tg.enableClosingConfirmation(); } catch (e) {}
+    }
+
+    function triggerHaptic(type = 'light') {
+      try {
+        if (tg?.HapticFeedback) {
+          tg.HapticFeedback.impactOccurred(type);
+        }
+      } catch (e) {}
+    }
+
+    const allTracks = window.LIZHI_DATA || [];
+    let currentPlaylist = [...allTracks];
+    let currentIndex = 0;
+    let isPlaying = false;
+    let playMode = 'loop';
+    let currentCategory = 'all';
+
+    const audio = document.getElementById('audioPlayer');
+    const vinyl = document.getElementById('vinyl');
+    const tonearm = document.getElementById('tonearm');
+    const playBtn = document.getElementById('playBtn');
+    const progressFill = document.getElementById('progressFill');
+    const currentTimeEl = document.getElementById('currentTime');
+    const totalDurationEl = document.getElementById('totalDuration');
+    const trackCover = document.getElementById('trackCover');
+    const ambientBg = document.getElementById('ambientBg');
+    const topTitle = document.getElementById('topTitle');
+    const topSubtitle = document.getElementById('topSubtitle');
+    const quoteBar = document.getElementById('quoteBar');
+    const flipCard = document.getElementById('flipCard');
+    const lyricsContent = document.getElementById('lyricsContent');
+    const lyricHeaderSong = document.getElementById('lyricHeaderSong');
+
+    function formatTime(secs) {
+      if (isNaN(secs) || secs < 0) return '00:00';
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function loadTrack(index, autoPlay = true) {
+      if (!currentPlaylist.length) return;
+      currentIndex = (index + currentPlaylist.length) % currentPlaylist.length;
+      const track = currentPlaylist[currentIndex];
+
+      topTitle.innerText = track.title;
+      topSubtitle.innerText = `《${track.album}》· ${track.year || '2004-2025'}`;
+      lyricHeaderSong.innerText = track.title;
+      quoteBar.innerText = `“${track.quote}”`;
+
+      const coverUrl = track.cover || 'covers/default_banner.jpg';
+      trackCover.src = coverUrl;
+      ambientBg.style.backgroundImage = `url("${coverUrl}")`;
+
+      renderLyrics(track.lyrics);
+
+      totalDurationEl.innerText = formatTime(track.duration || 0);
+      progressFill.style.width = '0%';
+      currentTimeEl.innerText = '00:00';
+
+      updateDrawerActiveItem();
+
+      if (autoPlay) {
+        startPlay();
+      }
+    }
+
+    function renderLyrics(lyricsText) {
+      lyricsContent.innerHTML = '';
+      if (!lyricsText) {
+        lyricsContent.innerHTML = '<div class="lyric-line active" style="margin-top:60px;">纯器乐演奏曲目<br>闭上双眼，聆听旋律在空气中流淌</div>';
+        return;
+      }
+      const lines = lyricsText.split('\n').filter(l => l.trim().length > 0);
+      lines.forEach((line, idx) => {
+        const div = document.createElement('div');
+        div.className = `lyric-line ${idx === 0 ? 'active' : ''}`;
+        div.innerText = line;
+        div.onclick = (e) => {
+          e.stopPropagation();
+          document.querySelectorAll('.lyric-line').forEach(el => el.classList.remove('active'));
+          div.classList.add('active');
+          triggerHaptic('medium');
+        };
+        lyricsContent.appendChild(div);
+      });
+    }
+
+    function toggleFlip() {
+      flipCard.classList.toggle('flipped');
+      triggerHaptic('light');
+    }
+
+    let toastTimer = null;
+    function showToast(text) {
+      const toast = document.getElementById('playToast');
+      if (!toast) return;
+      toast.innerHTML = text;
+      toast.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2600);
+    }
+
+    function playCurrentInChannel(track) {
+      if (!track) track = currentPlaylist[currentIndex];
+      if (!track) return;
+
+      startPlayAnimation();
+
+      const url = track.channel_url || ('https://t.me/libimusic/' + (track.msg_id || ''));
+      showToast('🎧 已在频道唤起 <b>《' + track.title + '》</b><br><small style="opacity:0.8;">支持锁屏息屏后台连播 ↗</small>');
+      triggerHaptic('heavy');
+
+      setTimeout(() => {
+        if (window.Telegram?.WebApp?.openTelegramLink) {
+          window.Telegram.WebApp.openTelegramLink(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      }, 220);
+    }
+
+    function startPlayAnimation() {
+      isPlaying = true;
+      updatePlayIcon(true);
+      vinyl.classList.add('playing');
+      tonearm.classList.add('playing');
+      triggerHaptic('medium');
+    }
+
+    function pausePlay() {
+      isPlaying = false;
+      updatePlayIcon(false);
+      vinyl.classList.remove('playing');
+      tonearm.classList.remove('playing');
+      triggerHaptic('light');
+    }
+
+    function togglePlay() {
+      if (isPlaying) {
+        pausePlay();
+      } else {
+        playCurrentInChannel();
+      }
+    }
+
+    function prevTrack() {
+      triggerHaptic('medium');
+      loadTrack(currentIndex - 1, false);
+      playCurrentInChannel();
+    }
+
+    function nextTrack() {
+      triggerHaptic('medium');
+      if (playMode === 'random') {
+        const rnd = Math.floor(Math.random() * currentPlaylist.length);
+        loadTrack(rnd, false);
+      } else {
+        loadTrack(currentIndex + 1, false);
+      }
+      playCurrentInChannel();
+    }
+
+    function togglePlayMode() {
+      const btn = document.getElementById('playModeBtn');
+      if (playMode === 'loop') {
+        playMode = 'single';
+        btn.innerText = '🔂';
+      } else if (playMode === 'single') {
+        playMode = 'random';
+        btn.innerText = '🔀';
+      } else {
+        playMode = 'loop';
+        btn.innerText = '🔁';
+      }
+      triggerHaptic('light');
+    }
+
+    function openChannel() {
+      const track = currentPlaylist[currentIndex];
+      const url = track?.channel_url || 'https://t.me/libimusic';
+      if (tg?.openTelegramLink) {
+        tg.openTelegramLink(url);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    // 抽屉与分类筛选逻辑
+    const drawerOverlay = document.getElementById('drawerOverlay');
+    const playlistDrawer = document.getElementById('playlistDrawer');
+    const drawerList = document.getElementById('drawerList');
+    const drawerTitle = document.getElementById('drawerTitle');
+
+    function toggleDrawer() {
+      const isOpen = playlistDrawer.classList.contains('open');
+      if (isOpen) {
+        playlistDrawer.classList.remove('open');
+        drawerOverlay.classList.remove('open');
+      } else {
+        playlistDrawer.classList.add('open');
+        drawerOverlay.classList.add('open');
+        applyCurrentFilters();
+        setTimeout(() => {
+          const cur = document.querySelector('.track-item.current');
+          if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 120);
+      }
+      triggerHaptic('light');
+    }
+
+    function switchCategory(cat, el) {
+      currentCategory = cat;
+      document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+      if (el) el.classList.add('active');
+      triggerHaptic('light');
+      applyCurrentFilters();
+    }
+
+    function randomPlayFromDrawer() {
+      triggerHaptic('heavy');
+      const rnd = Math.floor(Math.random() * allTracks.length);
+      currentPlaylist = [...allTracks];
+      loadTrack(rnd, false);
+      toggleDrawer();
+      playCurrentInChannel(allTracks[rnd]);
+    }
+
+    function applyCurrentFilters() {
+      const q = document.getElementById('searchInput').value.trim().toLowerCase();
+      let list = allTracks;
+
+      // 分类过滤
+      if (currentCategory === 'studio') {
+        list = list.filter(t => t.category === 'studio');
+        drawerTitle.innerText = `💿 经典录音室全集 (${list.length}首)`;
+      } else if (currentCategory === 'live') {
+        list = list.filter(t => t.category === 'live');
+        drawerTitle.innerText = `🎸 官方现场Live (${list.length}首)`;
+      } else if (currentCategory === 'japan') {
+        list = list.filter(t => t.category === 'japan');
+        drawerTitle.innerText = `🇯🇵 日本精选与东京现场 (${list.length}首)`;
+      } else if (currentCategory === 'bootleg') {
+        list = list.filter(t => t.category === 'bootleg');
+        drawerTitle.innerText = `⚠️ 民间现场与合辑 (${list.length}首)`;
+      } else if (currentCategory === 'city') {
+        list = list.filter(t => t.city !== null);
+        drawerTitle.innerText = `🏙️ 城市地标专区 (${list.length}首)`;
+      } else if (currentCategory === 'era') {
+        list = list.filter(t => t.year && t.year > 0);
+        drawerTitle.innerText = `⏳ 20年创作编年时光机 (${list.length}首)`;
+      } else {
+        drawerTitle.innerText = `🌟 全系编年史选歌库 (${list.length}首)`;
+      }
+
+      // 关键词过滤
+      if (q) {
+        list = list.filter(t => 
+          t.title.toLowerCase().includes(q) ||
+          t.album.toLowerCase().includes(q) ||
+          t.quote.toLowerCase().includes(q) ||
+          (t.lyrics && t.lyrics.toLowerCase().includes(q))
+        );
+      }
+
+      currentPlaylist = list;
+      renderDrawerList(list);
+    }
+
+    function filterPlaylist() {
+      applyCurrentFilters();
+    }
+
+    function renderDrawerList(tracks) {
+      drawerList.innerHTML = '';
+      if (!tracks.length) {
+        drawerList.innerHTML = '<div class="empty-tip">未找到匹配的歌曲，换个词试试~</div>';
+        return;
+      }
+
+      tracks.forEach((t, idx) => {
+        const item = document.createElement('div');
+        const isCur = allTracks[currentIndex]?.id === t.id;
+        item.className = `track-item ${isCur ? 'current' : ''}`;
+        item.onclick = () => {
+          loadTrack(idx, false);
+          toggleDrawer();
+          playCurrentInChannel(t);
+        };
+
+        const cityBadge = t.city ? `<span class="t-badge">📍${t.city}</span>` : '';
+        const catBadge = t.category === 'studio' ? '<span class="t-badge">录音室</span>' : (t.category === 'japan' ? '<span class="t-badge">日本限定</span>' : '');
+
+        item.innerHTML = `
+          <div class="t-index">${idx + 1}</div>
+          <div class="t-info">
+            <div class="t-title">${t.title} ${cityBadge} ${catBadge}</div>
+            <div class="t-meta">《${t.album}》· ${t.year || 2004} · ${formatTime(t.duration)}</div>
+          </div>
+          <div class="t-btn-link" onclick="event.stopPropagation(); window.open('${t.channel_url}','_blank')">📻</div>
+        `;
+        drawerList.appendChild(item);
+      });
+    }
+
+    function updateDrawerActiveItem() {
+      const curId = currentPlaylist[currentIndex]?.id;
+      document.querySelectorAll('.track-item').forEach(el => {
+        el.classList.remove('current');
+      });
+    }
+
+    if (allTracks.length > 0) {
+      loadTrack(0, false);
+    }
+  
+    const guideOverlay = document.getElementById('guideOverlay');
+    const guideDrawer = document.getElementById('guideDrawer');
+
+    function toggleGuideDrawer() {
+      const isOpen = guideDrawer.classList.contains('open');
+      if (isOpen) {
+        guideDrawer.classList.remove('open');
+        guideOverlay.classList.remove('open');
+      } else {
+        guideDrawer.classList.add('open');
+        guideOverlay.classList.add('open');
+      }
+      triggerHaptic('light');
+    }
+
+    function updatePlayIcon(playing) {
+      const icon = document.getElementById('playIconSvg');
+      if (!icon) return;
+      if (playing) {
+        icon.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="#15181e" stroke="none"></rect><rect x="14" y="4" width="4" height="16" fill="#15181e" stroke="none"></rect>';
+      } else {
+        icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+      }
+    }
+
+  </script>
+</body>
+</html>

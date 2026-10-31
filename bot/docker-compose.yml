@@ -1,0 +1,9 @@
+services:
+  lizhi-bot:
+    build: .
+    container_name: lizhi_music_bot
+    restart: always
+    volumes:
+      - ./music.db:/app/music.db
+      - ./.env:/app/.env
+    network_mode: "host"

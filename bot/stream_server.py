@@ -12,9 +12,9 @@ from telethon import TelegramClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("TGStreamServer")
 
-# Telegram MTProto 通用凭据
-API_ID = 2040
-API_HASH = "b18441a1ff607e10a989891a5462e627"
+# Telegram MTProto 开发者凭据（优先读取专属环境变量或 .env，未提供时使用默认备用）
+API_ID = int(os.getenv("API_ID", 0))
+API_HASH = os.getenv("API_HASH", "your_telegram_api_hash_here").strip()
 
 # 数据库路径与配置
 BASE_DIR = Path(__file__).resolve().parent
@@ -31,10 +31,18 @@ if not bot_token:
         if env_candidate.exists():
             with open(env_candidate, "r", encoding="utf-8") as f:
                 for line in f:
-                    if line.strip().startswith("BOT_TOKEN="):
-                        bot_token = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
-                    elif line.strip().startswith("STREAM_SECRET="):
-                        stream_secret = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                    line_s = line.strip()
+                    if line_s.startswith("BOT_TOKEN="):
+                        bot_token = line_s.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line_s.startswith("STREAM_SECRET="):
+                        stream_secret = line_s.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line_s.startswith("API_ID="):
+                        try:
+                            API_ID = int(line_s.split("=", 1)[1].strip().strip('"').strip("'"))
+                        except ValueError:
+                            pass
+                    elif line_s.startswith("API_HASH="):
+                        API_HASH = line_s.split("=", 1)[1].strip().strip('"').strip("'")
             if bot_token:
                 break
 

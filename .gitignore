@@ -8,6 +8,7 @@ askpass.cmd
 
 # 数据库文件与缓存
 *.db
+!/music.db
 *.sqlite
 *.sqlite3
 file_cache.json

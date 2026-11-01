@@ -22,8 +22,10 @@ DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "music.db")))
 if not DB_PATH.exists() and (BASE_DIR.parent / "music.db").exists():
     DB_PATH = BASE_DIR.parent / "music.db"
 
-# 优先读取系统环境变量 BOT_TOKEN (云平台注入) -> 其次读取 .env
+# 读取配置（BOT_TOKEN 与安全通信暗号 STREAM_SECRET）
 bot_token = os.getenv("BOT_TOKEN", "").strip()
+stream_secret = os.getenv("STREAM_SECRET", "lizhi-sec-7f89d3a1c5b4e208").strip()
+
 if not bot_token:
     for env_candidate in [BASE_DIR / ".env", BASE_DIR.parent / ".env"]:
         if env_candidate.exists():
@@ -31,7 +33,8 @@ if not bot_token:
                 for line in f:
                     if line.strip().startswith("BOT_TOKEN="):
                         bot_token = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
-                        break
+                    elif line.strip().startswith("STREAM_SECRET="):
+                        stream_secret = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
             if bot_token:
                 break
 
@@ -55,18 +58,33 @@ def get_song_info(song_id: int):
     conn.close()
     return dict(row) if row else None
 
+def verify_request_secret(request) -> bool:
+    """安全鉴权校验：局域网或携带正确暗号才放行"""
+    remote_ip = request.remote or ""
+    # 局域网访问（如 127.0.0.1 或 192.168.100.x）免密便于本地维护
+    if remote_ip.startswith("127.") or remote_ip.startswith("192.168.") or remote_ip == "::1":
+        return True
+    
+    # 外部公网访问必须验证专属暗号 Header
+    req_secret = request.headers.get("X-Stream-Secret", "").strip()
+    return req_secret == stream_secret
+
 async def handle_options(request):
     """处理跨域预检请求"""
     headers = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept",
+        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept, X-Stream-Secret",
         "Access-Control-Max-Age": "86400",
     }
     return web.Response(headers=headers)
 
 async def stream_handler(request):
-    """核心流媒体响应控制器，支持 HTTP 206 Partial Content (Range)"""
+    """核心流媒体响应控制器，支持 HTTP 206 Partial Content (Range) 与安全暗号防御"""
+    if not verify_request_secret(request):
+        logger.warning(f"🚨 拦截到未授权的公网探测请求！来源 IP: {request.remote}")
+        return web.Response(status=403, text="Forbidden: Invalid or missing stream secret")
+
     song_id_str = request.match_info.get("song_id")
     try:
         song_id = int(song_id_str)
@@ -80,7 +98,6 @@ async def stream_handler(request):
     channel_id = int(song["channel_id"])
     message_id = int(song["message_id"])
 
-    # 获取或缓存 Message 对象
     cache_key = f"{channel_id}:{message_id}"
     msg = CACHED_MESSAGES.get(cache_key)
     if not msg:
@@ -100,7 +117,6 @@ async def stream_handler(request):
     mime_type = msg.file.mime_type or "audio/mpeg"
     file_name = getattr(msg.file, "name", None) or f"{song['title']}.mp3"
 
-    # 处理 HTTP Range 请求头
     range_header = request.headers.get("Range")
     from_bytes = 0
     until_bytes = file_size - 1
@@ -122,9 +138,11 @@ async def stream_handler(request):
         "Accept-Ranges": "bytes",
         "Content-Length": str(content_length),
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept",
+        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept, X-Stream-Secret",
         "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
         "Content-Disposition": f'inline; filename="{file_name}"',
+        # 允许 Cloudflare 边缘缓存公共音频分片（缓存 30 天，节约软路由带宽）
+        "Cache-Control": "public, max-age=2592000, s-maxage=2592000, immutable",
     }
 
     if range_header:
@@ -136,7 +154,7 @@ async def stream_handler(request):
     response = web.StreamResponse(status=status_code, headers=headers)
     await response.prepare(request)
 
-    # 以 128KB 为 MTProto 强制对齐块大小
+    # 128KB 对齐与切片
     chunk_size = 128 * 1024
     aligned_offset = (from_bytes // chunk_size) * chunk_size
     skip_bytes = from_bytes - aligned_offset
@@ -165,7 +183,6 @@ async def stream_handler(request):
             if bytes_sent >= content_length:
                 break
     except (ConnectionResetError, asyncio.CancelledError):
-        # 客户端（浏览器）拖动进度条或切歌，正常断开前一个请求
         pass
     except Exception as e:
         logger.warning(f"流式传输中断 (Song {song_id}): {e}")
@@ -174,7 +191,8 @@ async def stream_handler(request):
     return response
 
 async def handle_info(request):
-    """获取歌曲元信息接口"""
+    if not verify_request_secret(request):
+        return web.Response(status=403, text="Forbidden")
     song_id = int(request.match_info.get("song_id", 0))
     song = get_song_info(song_id)
     if not song:
@@ -182,7 +200,9 @@ async def handle_info(request):
     return web.json_response({"ok": True, "song": song}, headers={"Access-Control-Allow-Origin": "*"})
 
 async def handle_health(request):
-    return web.json_response({"status": "running", "service": "Lizhi Stream Service"}, headers={"Access-Control-Allow-Origin": "*"})
+    if not verify_request_secret(request):
+        return web.Response(status=403, text="Forbidden")
+    return web.json_response({"status": "running", "service": "Lizhi Secure Stream Service"}, headers={"Access-Control-Allow-Origin": "*"})
 
 def init_app():
     app = web.Application()
@@ -203,12 +223,12 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    port = int(os.getenv("PORT", os.getenv("STREAM_PORT", 8000)))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    logger.info(f"🚀 音频流媒体服务已在 0.0.0.0:{port} 启动监听！")
+    port = int(os.getenv("PORT", os.getenv("STREAM_PORT", 8880)))
+    # 同时监听 IPv4 与 IPv6 (host=None)
+    site = web.TCPSite(runner, None, port)
+    logger.info(f"🚀 安全流媒体服务已在 IPv4/IPv6 双栈端口 :{port} 启动监听！")
     await site.start()
 
-    # 保持常驻运行
     while True:
         await asyncio.sleep(3600)
 

@@ -1016,7 +1016,7 @@
       updateDrawerActiveItem();
 
       if (autoPlay) {
-        startPlay();
+        playTrackAudio(track);
       }
     }
 
@@ -1058,23 +1058,21 @@
       }, 2600);
     }
 
-    function playCurrentInChannel(track) {
+    function playTrackAudio(track) {
       if (!track) track = currentPlaylist[currentIndex];
       if (!track) return;
 
-      startPlayAnimation();
+      const streamUrl = '/stream/' + track.id;
+      if (!audio.src.endsWith(streamUrl)) {
+        audio.src = streamUrl;
+      }
 
-      const url = track.channel_url || ('https://t.me/libimusic/' + (track.msg_id || ''));
-      showToast('🎧 已在频道唤起 <b>《' + track.title + '》</b><br><small style="opacity:0.8;">支持锁屏息屏后台连播 ↗</small>');
-      triggerHaptic('heavy');
-
-      setTimeout(() => {
-        if (window.Telegram?.WebApp?.openTelegramLink) {
-          window.Telegram.WebApp.openTelegramLink(url);
-        } else {
-          window.open(url, '_blank');
-        }
-      }, 220);
+      audio.play().then(() => {
+        startPlayAnimation();
+      }).catch(err => {
+        console.log('Play triggered:', err);
+        startPlayAnimation();
+      });
     }
 
     function startPlayAnimation() {
@@ -1095,28 +1093,68 @@
 
     function togglePlay() {
       if (isPlaying) {
+        audio.pause();
         pausePlay();
       } else {
-        playCurrentInChannel();
+        if (!audio.src || audio.src === '') {
+          playTrackAudio();
+        } else {
+          audio.play().then(() => startPlayAnimation()).catch(() => startPlayAnimation());
+        }
       }
     }
 
     function prevTrack() {
       triggerHaptic('medium');
-      loadTrack(currentIndex - 1, false);
-      playCurrentInChannel();
+      loadTrack(currentIndex - 1, true);
     }
 
     function nextTrack() {
       triggerHaptic('medium');
       if (playMode === 'random') {
         const rnd = Math.floor(Math.random() * currentPlaylist.length);
-        loadTrack(rnd, false);
+        loadTrack(rnd, true);
       } else {
-        loadTrack(currentIndex + 1, false);
+        loadTrack(currentIndex + 1, true);
       }
-      playCurrentInChannel();
     }
+
+    function seekAudio(e) {
+      const bar = document.getElementById('progressBar');
+      const rect = bar.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const pct = Math.max(0, Math.min(1, clickX / rect.width));
+      if (audio.duration && !isNaN(audio.duration)) {
+        audio.currentTime = pct * audio.duration;
+        progressFill.style.width = (pct * 100) + '%';
+        triggerHaptic('light');
+      }
+    }
+
+    // 绑定 audio 核心流式事件
+    audio.addEventListener('timeupdate', () => {
+      if (!audio.duration || isNaN(audio.duration)) return;
+      const pct = (audio.currentTime / audio.duration) * 100;
+      progressFill.style.width = pct + '%';
+      currentTimeEl.innerText = formatTime(audio.currentTime);
+      totalDurationEl.innerText = formatTime(audio.duration);
+    });
+
+    audio.addEventListener('ended', () => {
+      if (playMode === 'single') {
+        audio.currentTime = 0;
+        audio.play();
+      } else {
+        nextTrack();
+      }
+    });
+
+    audio.addEventListener('play', () => startPlayAnimation());
+    audio.addEventListener('pause', () => pausePlay());
+    audio.addEventListener('error', (e) => {
+      console.warn('Audio stream error, notice:', e);
+      showToast('⚠️ 流媒体连接中，请稍候...');
+    });
 
     function togglePlayMode() {
       const btn = document.getElementById('playModeBtn');

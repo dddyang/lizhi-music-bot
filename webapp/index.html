@@ -739,7 +739,7 @@
   <div class="ambient-bg" id="ambientBg"></div>
   <div class="ambient-overlay"></div>
 
-  <audio id="audioPlayer"></audio>
+  
 
   <div class="app-container">
     <header class="header">
@@ -796,6 +796,10 @@
 
       <div class="quote-bar" id="quoteBar">
         “关于郑州我想的全是你，想来生活无非是痛苦和美丽。”
+      </div>
+      
+      <div class="channel-hint-pill" id="channelPill" onclick="playCurrentInChannel()">
+        <span>🎧 呼起 Telegram 原生音质 · 锁屏/后台连播 ↗</span>
       </div>
     </main>
 
@@ -969,8 +973,9 @@
     let isPlaying = false;
     let playMode = 'loop';
     let currentCategory = 'all';
+    let currentSeconds = 0;
+    let progressTimer = null;
 
-    const audio = document.getElementById('audioPlayer');
     const vinyl = document.getElementById('vinyl');
     const tonearm = document.getElementById('tonearm');
     const playBtn = document.getElementById('playBtn');
@@ -986,6 +991,15 @@
     const lyricsContent = document.getElementById('lyricsContent');
     const lyricHeaderSong = document.getElementById('lyricHeaderSong');
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
     function formatTime(secs) {
       if (isNaN(secs) || secs < 0) return '00:00';
       const m = Math.floor(secs / 60);
@@ -993,7 +1007,7 @@
       return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
-    function loadTrack(index, autoPlay = true) {
+    function loadTrack(index, autoPlay = false) {
       if (!currentPlaylist.length) return;
       currentIndex = (index + currentPlaylist.length) % currentPlaylist.length;
       const track = currentPlaylist[currentIndex];
@@ -1001,7 +1015,7 @@
       topTitle.innerText = track.title;
       topSubtitle.innerText = `《${track.album}》· ${track.year || '2004-2025'}`;
       lyricHeaderSong.innerText = track.title;
-      quoteBar.innerText = `“${track.quote}”`;
+      quoteBar.innerText = `“${track.quote || '闭上双眼，聆听旋律在空气中流淌'}”`;
 
       const coverUrl = track.cover || 'covers/default_banner.jpg';
       trackCover.src = coverUrl;
@@ -1009,6 +1023,7 @@
 
       renderLyrics(track.lyrics);
 
+      currentSeconds = 0;
       totalDurationEl.innerText = formatTime(track.duration || 0);
       progressFill.style.width = '0%';
       currentTimeEl.innerText = '00:00';
@@ -1016,7 +1031,7 @@
       updateDrawerActiveItem();
 
       if (autoPlay) {
-        playTrackAudio(track);
+        playCurrentInChannel(track);
       }
     }
 
@@ -1047,33 +1062,33 @@
     }
 
     let toastTimer = null;
-    function showToast(text) {
+    function showToast(html) {
       const toast = document.getElementById('playToast');
       if (!toast) return;
-      toast.innerHTML = text;
+      toast.innerHTML = html;
       toast.classList.add('show');
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {
         toast.classList.remove('show');
-      }, 2600);
+      }, 2800);
     }
 
-    function playTrackAudio(track) {
+    function playCurrentInChannel(track) {
       if (!track) track = currentPlaylist[currentIndex];
       if (!track) return;
 
-      const STREAM_BASE_URL = 'https://remote-than-single-companies.trycloudflare.com';
-      const streamUrl = STREAM_BASE_URL + '/stream/' + track.id;
-      if (!audio.src.endsWith(streamUrl)) {
-        audio.src = streamUrl;
-      }
+      startPlayAnimation();
+      triggerHaptic('heavy');
+      showToast(`🎧 正在呼起 <b>《${escapeHtml(track.title)}》</b><br><span style="font-size:11.5px;opacity:0.85;">Telegram 原生音质 · 支持后台/锁屏连播 ↗</span>`);
 
-      audio.play().then(() => {
-        startPlayAnimation();
-      }).catch(err => {
-        console.log('Play triggered:', err);
-        startPlayAnimation();
-      });
+      const url = track.channel_url || (track.msg_id ? `https://t.me/libimusic/${track.msg_id}` : 'https://t.me/libimusic');
+      setTimeout(() => {
+        if (tg?.openTelegramLink) {
+          tg.openTelegramLink(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      }, 200);
     }
 
     function startPlayAnimation() {
@@ -1082,6 +1097,23 @@
       vinyl.classList.add('playing');
       tonearm.classList.add('playing');
       triggerHaptic('medium');
+
+      if (progressTimer) clearInterval(progressTimer);
+      progressTimer = setInterval(() => {
+        const curTrack = currentPlaylist[currentIndex];
+        const dur = (curTrack && curTrack.duration) ? curTrack.duration : 240;
+        currentSeconds++;
+        if (currentSeconds >= dur) {
+          if (playMode === 'single') {
+            currentSeconds = 0;
+          } else {
+            nextTrack();
+            return;
+          }
+        }
+        currentTimeEl.innerText = formatTime(currentSeconds);
+        progressFill.style.width = Math.min(100, (currentSeconds / dur * 100)) + '%';
+      }, 1000);
     }
 
     function pausePlay() {
@@ -1089,34 +1121,33 @@
       updatePlayIcon(false);
       vinyl.classList.remove('playing');
       tonearm.classList.remove('playing');
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
       triggerHaptic('light');
     }
 
     function togglePlay() {
       if (isPlaying) {
-        audio.pause();
         pausePlay();
       } else {
-        if (!audio.src || audio.src === '') {
-          playTrackAudio();
-        } else {
-          audio.play().then(() => startPlayAnimation()).catch(() => startPlayAnimation());
-        }
+        playCurrentInChannel();
       }
     }
 
     function prevTrack() {
       triggerHaptic('medium');
-      loadTrack(currentIndex - 1, true);
+      loadTrack(currentIndex - 1, isPlaying);
     }
 
     function nextTrack() {
       triggerHaptic('medium');
       if (playMode === 'random') {
         const rnd = Math.floor(Math.random() * currentPlaylist.length);
-        loadTrack(rnd, true);
+        loadTrack(rnd, isPlaying);
       } else {
-        loadTrack(currentIndex + 1, true);
+        loadTrack(currentIndex + 1, isPlaying);
       }
     }
 
@@ -1125,37 +1156,13 @@
       const rect = bar.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const pct = Math.max(0, Math.min(1, clickX / rect.width));
-      if (audio.duration && !isNaN(audio.duration)) {
-        audio.currentTime = pct * audio.duration;
-        progressFill.style.width = (pct * 100) + '%';
-        triggerHaptic('light');
-      }
+      const curTrack = currentPlaylist[currentIndex];
+      const dur = (curTrack && curTrack.duration) ? curTrack.duration : 240;
+      currentSeconds = Math.floor(pct * dur);
+      currentTimeEl.innerText = formatTime(currentSeconds);
+      progressFill.style.width = (pct * 100) + '%';
+      triggerHaptic('light');
     }
-
-    // 绑定 audio 核心流式事件
-    audio.addEventListener('timeupdate', () => {
-      if (!audio.duration || isNaN(audio.duration)) return;
-      const pct = (audio.currentTime / audio.duration) * 100;
-      progressFill.style.width = pct + '%';
-      currentTimeEl.innerText = formatTime(audio.currentTime);
-      totalDurationEl.innerText = formatTime(audio.duration);
-    });
-
-    audio.addEventListener('ended', () => {
-      if (playMode === 'single') {
-        audio.currentTime = 0;
-        audio.play();
-      } else {
-        nextTrack();
-      }
-    });
-
-    audio.addEventListener('play', () => startPlayAnimation());
-    audio.addEventListener('pause', () => pausePlay());
-    audio.addEventListener('error', (e) => {
-      console.warn('Audio stream error, notice:', e);
-      showToast('⚠️ 流媒体连接中，请稍候...');
-    });
 
     function togglePlayMode() {
       const btn = document.getElementById('playModeBtn');
@@ -1254,7 +1261,7 @@
         list = list.filter(t => 
           t.title.toLowerCase().includes(q) ||
           t.album.toLowerCase().includes(q) ||
-          t.quote.toLowerCase().includes(q) ||
+          (t.quote && t.quote.toLowerCase().includes(q)) ||
           (t.lyrics && t.lyrics.toLowerCase().includes(q))
         );
       }
@@ -1293,7 +1300,7 @@
             <div class="t-title">${t.title} ${cityBadge} ${catBadge}</div>
             <div class="t-meta">《${t.album}》· ${t.year || 2004} · ${formatTime(t.duration)}</div>
           </div>
-          <div class="t-btn-link" onclick="event.stopPropagation(); window.open('${t.channel_url}','_blank')">📻</div>
+          <div class="t-btn-link" onclick="event.stopPropagation(); playCurrentInChannel(currentPlaylist[${idx}])" title="呼起 Telegram 播放">📻</div>
         `;
         drawerList.appendChild(item);
       });
@@ -1334,7 +1341,6 @@
         icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
       }
     }
-
   </script>
 </body>
 </html>

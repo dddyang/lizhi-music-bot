@@ -1062,7 +1062,8 @@
       if (!track) track = currentPlaylist[currentIndex];
       if (!track) return;
 
-      const streamUrl = '/stream/' + track.id;
+      const STREAM_BASE_URL = 'https://remote-than-single-companies.trycloudflare.com';
+      const streamUrl = STREAM_BASE_URL + '/stream/' + track.id;
       if (!audio.src.endsWith(streamUrl)) {
         audio.src = streamUrl;
       }

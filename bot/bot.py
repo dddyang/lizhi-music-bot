@@ -617,19 +617,7 @@ async def start_bot():
         text = get_welcome_text(stats, v_stats)
         markup = get_main_menu_markup()
 
-        # 如果允许，尝试删除用户输入的 /start 命令消息，保证聊天框极致整洁
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        # 清理旧常驻消息（如果存在）
-        old_mid = get_active_hub_mid(user_id)
-        if old_mid:
-            try:
-                await bot.delete_message(chat_id=message.chat.id, message_id=old_mid)
-            except Exception:
-                pass
+        # 保留用户发出的命令与聊天历史，不自动删除
 
         if WELCOME_BANNER.exists():
             new_msg = await message.answer_photo(
@@ -651,10 +639,7 @@ async def start_bot():
     async def cmd_video_menu(message: Message):
         global USER_ACTIVE_HUB
         user_id = message.from_user.id
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        # 保留用户指令气泡
         text = (
             "🎬 **李志高清影音专区 · Li Zhi Video Archive**\n"
             "━━━━━━━━━━━━━━━━━━━\n"
@@ -746,10 +731,7 @@ async def start_bot():
     @dp.message(Command("search", "help"))
     async def cmd_search_guide(message: Message):
         user_id = message.from_user.id
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        # 保留用户指令气泡
         bot_me = await bot.get_me()
         guide = (
             f"🔍 **李志曲库与影音智能检索指南：**\n"
@@ -788,10 +770,7 @@ async def start_bot():
     @dp.message(Command("city"))
     async def cmd_city_menu(message: Message):
         user_id = message.from_user.id
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        # 保留用户指令气泡
         builder = InlineKeyboardBuilder()
         for c in CITIES:
             songs = db.get_songs_by_city(c)
@@ -854,10 +833,7 @@ async def start_bot():
     @dp.message(Command("era"))
     async def cmd_era_menu(message: Message):
         user_id = message.from_user.id
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        # 保留用户指令气泡
         builder = InlineKeyboardBuilder()
         for k, v in ERA_MAPPING.items():
             builder.button(text=v["title"], callback_data=f"era:{k}")
@@ -1250,11 +1226,7 @@ async def start_bot():
         if query_text.startswith("/"):
             return
 
-        # 尝试自动删除用户发的搜索词，保证聊天框极简纯粹
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        # 保留用户发送的搜索关键字
 
         safe_query = escape_md(query_text)
         video_results = db.search_videos(query_text, limit=4)
@@ -1442,10 +1414,7 @@ async def start_bot():
     @dp.message(Command("sync"))
     async def handle_sync_command(message: Message):
         user_id = message.from_user.id
-        try:
-            await message.delete()
-        except Exception:
-            pass
+        # 保留用户指令气泡
         stats = db.get_stats()
         v_stats = db.get_video_stats()
         sync_text = (

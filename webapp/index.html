@@ -93,6 +93,15 @@
       transition: all 0.2s ease;
     }
 
+        @keyframes pulseGlow {
+      0% { box-shadow: 0 0 0 0 rgba(212, 163, 115, 0.6); }
+      70% { box-shadow: 0 0 0 8px rgba(212, 163, 115, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(212, 163, 115, 0); }
+    }
+    .header-btn.pulse {
+      animation: pulseGlow 2.5s infinite;
+      border-color: var(--accent-color);
+    }
     .header-btn:active {
       transform: scale(0.92);
       background: rgba(255, 255, 255, 0.16);
@@ -755,7 +764,10 @@
         <h1 id="topTitle">李志音乐 · 随身云听</h1>
         <p id="topSubtitle">35张专辑 · 529首编年典藏</p>
       </div>
-      <button class="header-btn" onclick="openChannel()">📻</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="header-btn" onclick="installHomeScreen()" id="homeScreenBtn" title="添加到手机桌面">📲</button>
+        <button class="header-btn" onclick="openChannel()" title="收听频道">📻</button>
+      </div>
     </header>
 
     <main class="stage">
@@ -957,6 +969,71 @@
       tg.ready();
       tg.expand();
       try { tg.enableClosingConfirmation(); } catch (e) {}
+
+      // Telegram Mini Apps 2.0 (Bot API 8.0+) 原生能力升级
+      if (tg.isVersionAtLeast && tg.isVersionAtLeast('8.0')) {
+        // 1. 请求全屏沉浸模式 (Edge-to-Edge 视觉)
+        try {
+          if (!tg.isFullscreen && tg.requestFullscreen) {
+            tg.requestFullscreen();
+          }
+        } catch (e) {
+          console.log('Fullscreen error:', e);
+        }
+
+        // 2. 禁用手势下拉关闭 (保护歌词和黑胶滚动交互不被打断)
+        try {
+          if (tg.disableVerticalSwipes) {
+            tg.disableVerticalSwipes();
+          }
+        } catch (e) {}
+
+        // 3. 手机状态栏与环境黑胶底色浑然一体
+        try {
+          if (tg.setHeaderColor) tg.setHeaderColor('#0b0d10');
+          if (tg.setBackgroundColor) tg.setBackgroundColor('#0b0d10');
+        } catch (e) {}
+
+        // 4. 探测手机桌面图标状态
+        try {
+          if (tg.checkHomeScreenStatus) {
+            tg.checkHomeScreenStatus(function(status) {
+              const btn = document.getElementById('homeScreenBtn');
+              if (btn && (status === 'missed' || status === 'unknown')) {
+                btn.classList.add('pulse');
+              }
+            });
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 添加到手机桌面快捷方式
+    function installHomeScreen() {
+      triggerHaptic('medium');
+      if (tg?.isVersionAtLeast && tg.isVersionAtLeast('8.0') && tg.addToHomeScreen) {
+        tg.checkHomeScreenStatus(function(status) {
+          if (status === 'added') {
+            showToast('✅ 播放器已在您的手机桌面啦！直接在手机屏幕点击图标秒开');
+          } else {
+            tg.addToHomeScreen();
+          }
+        });
+      } else {
+        showToast('💡 当前客户端版本暂未开放桌面图标，请更新 Telegram 至最新版本~');
+      }
+    }
+
+    // 手机陀螺仪动态物理光泽联动 (拿在手里晃动倾斜手机时，黑胶高光随光影物理偏转)
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener('deviceorientation', (e) => {
+        const glare = document.querySelector('.vinyl-glare');
+        if (!glare) return;
+        const gamma = e.gamma || 0; // 左右倾斜 -90 到 90
+        const beta = e.beta || 0;   // 前后倾斜 -180 到 180
+        const angle = Math.round(gamma * 1.2 + beta * 0.2);
+        glare.style.transform = `rotate(${angle}deg)`;
+      }, { passive: true });
     }
 
     function triggerHaptic(type = 'light') {

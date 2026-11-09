@@ -1431,6 +1431,19 @@ async def start_bot():
         builder.button(text="🏠 返回主菜单", callback_data="main_menu")
         await render_hub(bot, message.chat.id, user_id, sync_text, builder.as_markup())
 
+    # 自动同步 Telegram 客户端左下角 MenuButton 专属域名 (无需人工去 @BotFather 设置)
+    try:
+        from aiogram.types import MenuButtonWebApp, WebAppInfo
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="🎵 李志音乐",
+                web_app=WebAppInfo(url="https://lz.17013344.xyz")
+            )
+        )
+        logger.info("✅ 已自动同步 Telegram 客户端左下角 MenuButton 专属域名: https://lz.17013344.xyz")
+    except Exception as e:
+        logger.warning(f"设置 MenuButton 失败: {e}")
+
     try:
         await bot.set_my_commands([
             BotCommand(command="start", description="🏠 主控制台与点播中心"),

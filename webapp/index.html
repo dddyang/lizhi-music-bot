@@ -201,6 +201,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 80%;
     }
     .video-player-box {
       width: 100%;
@@ -210,12 +211,32 @@
       overflow: hidden;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
       border: 1px solid rgba(255, 255, 255, 0.15);
+      position: relative;
     }
     .video-player-box video {
       width: 100%;
-      max-height: 65vh;
+      max-height: 60vh;
       display: block;
       outline: none;
+    }
+    .cinema-native-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #d4a373 0%, #b88654 100%);
+      color: #121417;
+      font-weight: 600;
+      font-size: 13.5px;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 20px rgba(212, 163, 115, 0.4);
+      transition: transform 0.15s ease;
+    }
+    .cinema-native-btn:active {
+      transform: scale(0.97);
     }
 
     /* 顶部导航 */
@@ -1047,10 +1068,15 @@
       <button class="header-btn" style="width:34px;height:34px;" onclick="closeVideoModal()">✕</button>
     </div>
     <div class="video-player-box">
-      <video id="cinemaVideo" controls playsinline webkit-playsinline></video>
+      <video id="cinemaVideo" controls preload="metadata" playsinline webkit-playsinline x5-playsinline x5-video-player-type="h5"></video>
     </div>
-    <div style="margin-top:10px; font-size:12px; color:var(--text-sub); text-align:center;" id="videoModalMeta">
-      Telegram MTProto 原画切片 · 零压缩 · 1080P 高清原画
+    <div style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:680px; margin-top:14px;">
+      <button class="cinema-native-btn" id="openTelegramVideoBtn" onclick="openCurrentTelegramVideo()">
+        <span>🚀 呼起 Telegram 原生超清秒播 (免缓冲·极速) ↗</span>
+      </button>
+      <div style="font-size:11.5px; color:var(--text-sub); text-align:center; line-height:1.5;" id="videoModalMeta">
+        💡 原画文件较大 (100MB~1.3GB)，强烈推荐点击上方金色按钮呼起 Telegram 原生秒播！
+      </div>
     </div>
   </div>
 
@@ -1433,6 +1459,8 @@
       triggerHaptic('medium');
     }
 
+    let currentCinemaVideo = null;
+
     function renderCinemaGrid(videos) {
       const grid = document.getElementById('cinemaGrid');
       grid.innerHTML = '';
@@ -1454,6 +1482,7 @@
               <span style="margin-left:auto; opacity:0.8;">${v.size_mb ? v.size_mb + 'MB' : '原画'}</span>
             </div>
           </div>
+          <div class="t-btn-link" style="width:auto; padding:4px 8px; font-size:11px; border-radius:8px; display:flex; align-items:center; gap:2px; flex-shrink:0;" onclick="event.stopPropagation(); openTelegramVideoLink('${v.link}')" title="呼起 Telegram 官方原生播放">🚀 秒播</div>
         `;
         grid.appendChild(card);
       });
@@ -1474,16 +1503,37 @@
     }
 
     function openVideoModal(video) {
+      currentCinemaVideo = video;
       pauseAudio();
       triggerHaptic('heavy');
       const modal = document.getElementById('videoModal');
       const title = document.getElementById('videoModalTitle');
       const meta = document.getElementById('videoModalMeta');
       title.innerText = video.title;
-      meta.innerText = `${video.category} · ${video.size_mb || 100}MB 原画切片 · 零压缩直传`;
+      meta.innerHTML = `
+        <span style="color:var(--accent-color); font-weight:600;">${video.category} · ${video.size_mb || 100}MB 原画</span><br>
+        💡 建议点击上方金色按钮呼起 Telegram 原生秒播，超清免缓冲且支持画中画！
+      `;
       cinemaVideo.src = `${STREAM_BASE_URL}/stream/video/${video.id}`;
       modal.classList.add('open');
-      cinemaVideo.play().catch(e => console.warn(e));
+    }
+
+    function openCurrentTelegramVideo() {
+      if (!currentCinemaVideo) return;
+      openTelegramVideoLink(currentCinemaVideo.link);
+    }
+
+    function openTelegramVideoLink(url) {
+      if (!url) return;
+      triggerHaptic('heavy');
+      showToast('🚀 正在呼起 Telegram 官方超清原画播放器...');
+      setTimeout(() => {
+        if (tg?.openTelegramLink) {
+          tg.openTelegramLink(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      }, 200);
     }
 
     function closeVideoModal() {

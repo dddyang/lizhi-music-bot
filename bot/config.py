@@ -17,15 +17,15 @@ else:
     CHANNEL_ID = _raw_channel_id
 
 _db_env = os.getenv("DB_PATH", "music.db")
-# 智能寻找最新的数据库文件（优先比较修改时间与文件大小）
-cand_paths = [BASE_DIR / _db_env, BASE_DIR.parent / _db_env]
-valid_cands = [p for p in cand_paths if p.exists() and p.is_file()]
-if valid_cands:
-    # 优先选文件较大且最新的
-    best_db = max(valid_cands, key=lambda p: (p.stat().st_size, p.stat().st_mtime))
-    DB_PATH = str(best_db)
-else:
+# 权威数据库路径解析：若显式指定绝对路径则直接使用；否则优先定位项目根目录 music.db，兜底 bot/music.db
+if os.path.isabs(_db_env) and Path(_db_env).exists():
+    DB_PATH = str(Path(_db_env))
+elif (BASE_DIR.parent / _db_env).exists():
+    DB_PATH = str(BASE_DIR.parent / _db_env)
+elif (BASE_DIR / _db_env).exists():
     DB_PATH = str(BASE_DIR / _db_env)
+else:
+    DB_PATH = str(BASE_DIR.parent / "music.db")
 
 # 本地曲库与转码工具路径（用于 auto_uploader.py）
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", r"Z:\音乐\李志"))

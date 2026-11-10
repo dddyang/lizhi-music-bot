@@ -11,8 +11,13 @@ askpass.cmd
 !/music.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
 file_cache.json
 lyrics_bank_real.json
+
+.workbuddy-ai/
 
 # 日志与临时运行数据
 *.log
@@ -48,6 +53,7 @@ scratch/
 test_audio/
 patch_*.py
 inspect_*.py
+benchmark_*.py
 
 # 编辑器与操作系统缓存
 .vscode/
@@ -86,8 +92,10 @@ docs/
 scripts/backup_to_nas.sh
 *.sh
 
-# AI 专属上下文与本地复盘文档（仅供 AI 研读，严禁同步到 GitHub）
+# AI 专属上下文与本地复盘文档（仅供本地研读，严禁同步到 GitHub）
 *全景开发总结*.md
 *避坑*.md
 PROJECT_AI_*.md
+*总结*.md
+*大典*.md
 

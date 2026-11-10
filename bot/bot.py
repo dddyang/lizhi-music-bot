@@ -205,6 +205,24 @@ def format_size(bytes_size: int) -> str:
         return f"{mb / 1024:.2f} GB"
     return f"{mb:.1f} MB"
 
+def format_video_size(v: dict) -> str:
+    """智能解析视频规格（优先兼容 videos.size_mb，同时兼容 file_size 字节）"""
+    if not v:
+        return "未知规格"
+    size_mb = v.get("size_mb")
+    if size_mb is not None:
+        try:
+            val = float(size_mb)
+            if val >= 1024:
+                return f"{val / 1024:.2f} GB"
+            return f"{val:.1f} MB"
+        except (ValueError, TypeError):
+            pass
+    bytes_size = v.get("file_size")
+    if bytes_size:
+        return format_size(bytes_size)
+    return "未知规格"
+
 def escape_md(text: str) -> str:
     if not text:
         return ""
@@ -565,8 +583,7 @@ def build_video_detail_card(v: dict, back_cat: Optional[str] = None, back_offset
     year_str = f"📅 **演出年份**：{year} 年\n" if year else ""
     dur = v.get("duration", 0)
     dur_str = f"⏳ **视频时长**：约 {format_duration(dur)}\n" if dur else ""
-    size = v.get("file_size", 0)
-    size_str = f"💾 **文件规格**：约 {format_size(size)}\n" if size else ""
+    size_str = f"💾 **文件规格**：约 {format_video_size(v)}\n"
     channel_link = f"https://t.me/libimusic/{v['message_id']}"
 
     text = (
@@ -719,7 +736,7 @@ async def start_bot():
             fail_msg = (
                 f"🎬 **《{v['title']}》**\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ **提示**：该视频规格为 `{format_size(v['file_size'])}`，超出 Telegram 私聊直接转播上限。\n"
+                f"⚠️ **提示**：该视频规格为 `{format_video_size(v)}`，超出 Telegram 私聊直接转播上限。\n"
                 f"请点击下方按钮直接在频道中享受 1080P 原画免下载播放！"
             )
             await query.message.answer(fail_msg, reply_markup=ctrl_markup, parse_mode="Markdown")

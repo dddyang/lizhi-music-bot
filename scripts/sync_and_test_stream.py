@@ -15,9 +15,19 @@ import time
 import urllib.request
 import urllib.error
 
-R2S_HOST = "192.168.100.1"
-R2S_USER = "root"
-R2S_PASS = "your_r2s_password_here"
+R2S_HOST = os.getenv("R2S_HOST", "192.168.100.1")
+R2S_USER = os.getenv("R2S_USER", "root")
+R2S_PASS = os.getenv("R2S_PASS") or os.getenv("R2S_PASSWORD", "")
+
+# 若环境变量未设置，尝试从项目根目录 .env 中加载
+if not R2S_PASS:
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    if env_file.exists():
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("R2S_PASS=") or line.strip().startswith("R2S_PASSWORD="):
+                    R2S_PASS = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                    break
 
 def run_ssh_command(cmd):
     askpass = os.path.join(os.getenv("TEMP", "."), "askpass_r2s.cmd")

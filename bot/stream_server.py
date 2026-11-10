@@ -13,14 +13,20 @@ from telethon import TelegramClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("TGStreamServer")
 
-# Telegram MTProto 开发者凭据
+# Telegram MTProto 开发者凭据（优先读取环境变量，未配置时从 .env 自动加载，严禁硬编码默认值）
 API_ID = int(os.getenv("API_ID", 0))
-API_HASH = os.getenv("API_HASH", "your_telegram_api_hash_here").strip()
+API_HASH = os.getenv("API_HASH", "").strip()
 
-# 数据库路径与配置
+# 数据库路径与配置（权威定位项目根目录 music.db）
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "music.db")))
-if not DB_PATH.exists() and (BASE_DIR.parent / "music.db").exists():
+_db_env = os.getenv("DB_PATH", "music.db")
+if os.path.isabs(_db_env) and Path(_db_env).exists():
+    DB_PATH = Path(_db_env)
+elif (BASE_DIR.parent / _db_env).exists():
+    DB_PATH = BASE_DIR.parent / _db_env
+elif (BASE_DIR / _db_env).exists():
+    DB_PATH = BASE_DIR / _db_env
+else:
     DB_PATH = BASE_DIR.parent / "music.db"
 
 # 读取配置（BOT_TOKEN）

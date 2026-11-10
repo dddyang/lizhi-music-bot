@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import sys
 import re
@@ -12,7 +13,7 @@ from telethon import TelegramClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("TGStreamServer")
 
-# Telegram MTProto 开发者凭据（优先读取专属环境变量或 .env，未提供时使用默认备用）
+# Telegram MTProto 开发者凭据
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH", "your_telegram_api_hash_here").strip()
 
@@ -22,9 +23,8 @@ DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "music.db")))
 if not DB_PATH.exists() and (BASE_DIR.parent / "music.db").exists():
     DB_PATH = BASE_DIR.parent / "music.db"
 
-# 读取配置（BOT_TOKEN 与安全通信暗号 STREAM_SECRET）
+# 读取配置（BOT_TOKEN）
 bot_token = os.getenv("BOT_TOKEN", "").strip()
-stream_secret = os.getenv("STREAM_SECRET", "lizhi-sec-7f89d3a1c5b4e208").strip()
 
 if not bot_token:
     for env_candidate in [BASE_DIR / ".env", BASE_DIR.parent / ".env"]:
@@ -34,8 +34,6 @@ if not bot_token:
                     line_s = line.strip()
                     if line_s.startswith("BOT_TOKEN="):
                         bot_token = line_s.split("=", 1)[1].strip().strip('"').strip("'")
-                    elif line_s.startswith("STREAM_SECRET="):
-                        stream_secret = line_s.split("=", 1)[1].strip().strip('"').strip("'")
                     elif line_s.startswith("API_ID="):
                         try:
                             API_ID = int(line_s.split("=", 1)[1].strip().strip('"').strip("'"))
@@ -54,57 +52,61 @@ if not bot_token:
 SESSION_PATH = str(BASE_DIR / "stream_bot.session")
 tg_client = TelegramClient(SESSION_PATH, API_ID, API_HASH)
 
-# 实体缓存
+# 消息实体缓存
 CACHED_MESSAGES = {}
 
-def get_song_info(song_id: int):
+def get_media_info(media_type: str, item_id: int):
+    """根据类型从数据库中查询音频或视频的频道定位信息"""
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT id, title, performer, album, duration, channel_id, message_id, file_name FROM songs WHERE id = ?", (song_id,))
+    if media_type == "video":
+        c.execute("SELECT id, title, category, year, channel_id, message_id FROM videos WHERE id = ?", (item_id,))
+    else:
+        c.execute("SELECT id, title, performer, album, duration, channel_id, message_id, file_name FROM songs WHERE id = ?", (item_id,))
     row = c.fetchone()
     conn.close()
     return dict(row) if row else None
-
-def verify_request_secret(request) -> bool:
-    """安全鉴权校验：局域网或携带正确暗号才放行"""
-    remote_ip = request.remote or ""
-    # 局域网访问（如 127.0.0.1 或 192.168.100.x）免密便于本地维护
-    if remote_ip.startswith("127.") or remote_ip.startswith("192.168.") or remote_ip == "::1":
-        return True
-    
-    # 外部公网访问必须验证专属暗号 Header
-    req_secret = request.headers.get("X-Stream-Secret", "").strip()
-    return req_secret == stream_secret
 
 async def handle_options(request):
     """处理跨域预检请求"""
     headers = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept, X-Stream-Secret",
+        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept",
         "Access-Control-Max-Age": "86400",
     }
     return web.Response(headers=headers)
 
 async def stream_handler(request):
-    """核心流媒体响应控制器，支持 HTTP 206 Partial Content (Range) 与安全暗号防御"""
-    if not verify_request_secret(request):
-        logger.warning(f"🚨 拦截到未授权的公网探测请求！来源 IP: {request.remote}")
-        return web.Response(status=403, text="Forbidden: Invalid or missing stream secret")
+    """
+    通用音视频流媒体切片控制器，遵循 TG-FileStreamBot 规范：
+    - 支持 HTTP 206 Partial Content (Byte-Range 断点续传)
+    - 支持 Safari / Chrome / iOS / Android 原生 <audio> 和 <video>
+    - 允许 Cloudflare Anycast 边缘缓存公共音频分片
+    """
+    media_type = request.match_info.get("media_type", "audio").lower()
+    if media_type not in ("audio", "video"):
+        return web.Response(status=404, text="Invalid media type, expected 'audio' or 'video'")
 
-    song_id_str = request.match_info.get("song_id")
+    # 如果通过兼容路由 /stream/{song_id} 访问
+    if "song_id" in request.match_info:
+        item_id_str = request.match_info.get("song_id")
+        media_type = "audio"
+    else:
+        item_id_str = request.match_info.get("item_id")
+
     try:
-        song_id = int(song_id_str)
+        item_id = int(item_id_str)
     except (ValueError, TypeError):
-        return web.Response(status=400, text="Invalid song id")
+        return web.Response(status=400, text="Invalid ID")
 
-    song = get_song_info(song_id)
-    if not song:
-        return web.Response(status=404, text="Song not found in database")
+    item = get_media_info(media_type, item_id)
+    if not item:
+        return web.Response(status=404, text=f"{media_type.capitalize()} not found in database")
 
-    channel_id = int(song["channel_id"])
-    message_id = int(song["message_id"])
+    channel_id = int(item["channel_id"])
+    message_id = int(item["message_id"])
 
     cache_key = f"{channel_id}:{message_id}"
     msg = CACHED_MESSAGES.get(cache_key)
@@ -115,16 +117,18 @@ async def stream_handler(request):
             if msg and msg.media:
                 CACHED_MESSAGES[cache_key] = msg
         except Exception as e:
-            logger.error(f"获取频道消息失败 (ID {message_id}): {e}")
+            logger.error(f"获取 Telegram 频道媒体消息失败 (ID {message_id}): {e}")
             return web.Response(status=500, text=f"Error fetching message: {e}")
 
     if not msg or not msg.media or not getattr(msg, "file", None):
         return web.Response(status=404, text="Media not found in Telegram message")
 
     file_size = msg.file.size
-    mime_type = msg.file.mime_type or "audio/mpeg"
-    file_name = getattr(msg.file, "name", None) or f"{song['title']}.mp3"
+    default_mime = "video/mp4" if media_type == "video" else "audio/mpeg"
+    mime_type = msg.file.mime_type or default_mime
+    file_name = getattr(msg.file, "name", None) or f"{item['title']}.{'mp4' if media_type == 'video' else 'mp3'}"
 
+    # 处理客户端 Byte-Range 请求
     range_header = request.headers.get("Range")
     from_bytes = 0
     until_bytes = file_size - 1
@@ -146,7 +150,7 @@ async def stream_handler(request):
         "Accept-Ranges": "bytes",
         "Content-Length": str(content_length),
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept, X-Stream-Secret",
+        "Access-Control-Allow-Headers": "Range, Origin, Content-Type, Accept",
         "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
         "Content-Disposition": f'inline; filename="{file_name}"',
         # 允许 Cloudflare 边缘缓存公共音频分片（缓存 30 天，节约软路由带宽）
@@ -162,7 +166,12 @@ async def stream_handler(request):
     response = web.StreamResponse(status=status_code, headers=headers)
     await response.prepare(request)
 
-    # 128KB 对齐与切片
+    # 如果是 HEAD 请求（如 curl -I 或浏览器预检探测），已成功发送响应头，直接结束
+    if request.method == "HEAD":
+        await response.write_eof()
+        return response
+
+    # 128KB 整数倍对齐与精确裁剪
     chunk_size = 128 * 1024
     aligned_offset = (from_bytes // chunk_size) * chunk_size
     skip_bytes = from_bytes - aligned_offset
@@ -193,32 +202,29 @@ async def stream_handler(request):
     except (ConnectionResetError, asyncio.CancelledError):
         pass
     except Exception as e:
-        logger.warning(f"流式传输中断 (Song {song_id}): {e}")
+        logger.warning(f"流式传输中断 ({media_type} {item_id}): {e}")
 
     await response.write_eof()
     return response
 
-async def handle_info(request):
-    if not verify_request_secret(request):
-        return web.Response(status=403, text="Forbidden")
-    song_id = int(request.match_info.get("song_id", 0))
-    song = get_song_info(song_id)
-    if not song:
-        return web.json_response({"error": "not found"}, status=404)
-    return web.json_response({"ok": True, "song": song}, headers={"Access-Control-Allow-Origin": "*"})
-
 async def handle_health(request):
-    if not verify_request_secret(request):
-        return web.Response(status=403, text="Forbidden")
-    return web.json_response({"status": "running", "service": "Lizhi Secure Stream Service"}, headers={"Access-Control-Allow-Origin": "*"})
+    return web.json_response({"status": "running", "service": "Lizhi Universal Audio/Video Stream Engine"}, headers={"Access-Control-Allow-Origin": "*"})
 
 def init_app():
     app = web.Application()
+    # 统一双模态流媒体路由 (GET / HEAD / OPTIONS)
+    app.router.add_route("OPTIONS", "/stream/{media_type}/{item_id}", handle_options)
+    app.router.add_route("GET", "/stream/{media_type}/{item_id}", stream_handler)
+    app.router.add_route("HEAD", "/stream/{media_type}/{item_id}", stream_handler)
+
+    # 兼容历史音频路由 (/stream/{song_id})
     app.router.add_route("OPTIONS", "/stream/{song_id}", handle_options)
     app.router.add_route("GET", "/stream/{song_id}", stream_handler)
-    app.router.add_route("OPTIONS", "/info/{song_id}", handle_options)
-    app.router.add_route("GET", "/info/{song_id}", handle_info)
+    app.router.add_route("HEAD", "/stream/{song_id}", stream_handler)
+
+    # 健康探针
     app.router.add_route("GET", "/health", handle_health)
+    app.router.add_route("HEAD", "/health", handle_health)
     return app
 
 async def main():
@@ -232,9 +238,8 @@ async def main():
     await runner.setup()
     
     port = int(os.getenv("PORT", os.getenv("STREAM_PORT", 8880)))
-    # 同时监听 IPv4 与 IPv6 (host=None)
     site = web.TCPSite(runner, None, port)
-    logger.info(f"🚀 安全流媒体服务已在 IPv4/IPv6 双栈端口 :{port} 启动监听！")
+    logger.info(f"🚀 音影双全流媒体引擎已在 IPv4/IPv6 双栈端口 :{port} 启动监听！")
     await site.start()
 
     while True:

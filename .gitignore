@@ -55,6 +55,9 @@ patch_*.py
 inspect_*.py
 benchmark_*.py
 
+# 本地历史重写备份目录
+.git_backup_before_history_rewrite/
+
 # 编辑器与操作系统缓存
 .vscode/
 .idea/

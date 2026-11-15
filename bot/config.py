@@ -7,7 +7,6 @@ BASE_DIR = Path(__file__).resolve().parent
 env_file = BASE_DIR / ".env" if (BASE_DIR / ".env").exists() else BASE_DIR.parent / ".env"
 load_dotenv(env_file)
 
-
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 # 频道 ID 可以是负整数（如 -100xxxxxxxxxx）或字符串形式的频道用户名（如 @lizhi_music）
 _raw_channel_id = os.getenv("CHANNEL_ID", "").strip()
@@ -26,7 +25,3 @@ elif (BASE_DIR / _db_env).exists():
     DB_PATH = str(BASE_DIR / _db_env)
 else:
     DB_PATH = str(BASE_DIR.parent / "music.db")
-
-# 本地曲库与转码工具路径（用于 auto_uploader.py）
-MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", r"Z:\音乐\李志"))
-FFMPEG_PATH = Path(os.getenv("FFMPEG_PATH", r"D:\AI\剪映\JianyingPro\11.5.3.14501\ffmpeg.exe"))

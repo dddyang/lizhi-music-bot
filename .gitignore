@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!bot/.env.example
 askpass.cmd
 *.pem
 *.key
@@ -36,7 +39,7 @@ env/
 venv/
 .venv/
 
-# 音频与大文件（版权与体积限制，勿提交至 GitHub）
+# 音频与大压缩文件（禁止提交至 GitHub）
 *.flac
 *.mp3
 *.m4a
@@ -74,31 +77,32 @@ desktop.ini
 !webapp/covers/*.jpeg
 *.png
 !webapp/covers/*.png
-*.zip
 
+# Telethon 客户端凭据与会话
 *.session
 *.session-journal
 video_upload_cache.json
 *.bak
 
-# 私人局域网自动化部署脚本（禁止提交 GitHub）
+# 私人局域网自动化部署脚本与精简目录
 deploy_r2s.py
+deploy_to_r2s*.py
+replace_r2s*.py
+check_status.py
 run_r2s.sh
 *r2s*
 
 # 历史对话大日志与凭据归档目录（防止向 GitHub 泄露 Token）
 docs/conversations/
- 
 docs/
 
- 
+# 部署与自动化脚本
 scripts/backup_to_nas.sh
 *.sh
 
-# AI 专属上下文与本地复盘文档（仅供本地研读，严禁同步到 GitHub）
+# AI 专属上下文与本地复盘文档
 *全景开发总结*.md
 *避坑*.md
 PROJECT_AI_*.md
 *总结*.md
 *大典*.md
-

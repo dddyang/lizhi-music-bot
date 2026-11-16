@@ -92,6 +92,10 @@ check_status.py
 run_r2s.sh
 *r2s*
 
+# 入群验证题库与答案（包含私有常识题，禁止上传 GitHub）：
+*quiz_bank.json
+!*quiz_bank.json.example
+
 # 历史对话大日志与凭据归档目录（防止向 GitHub 泄露 Token）
 docs/conversations/
 docs/

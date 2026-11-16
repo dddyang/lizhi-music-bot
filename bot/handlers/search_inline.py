@@ -128,7 +128,7 @@ async def handle_inline_query(inline_query: InlineQuery):
     await inline_query.answer(results, cache_time=cache_duration, is_personal=False)
 
 
-@router.message(F.text)
+@router.message(F.chat.type == "private", F.text)
 async def handle_search(message: Message, bot: Bot):
     """兜底文本搜索路由：匹配歌名、拼音、歌词与原画大片"""
     user_id = message.from_user.id

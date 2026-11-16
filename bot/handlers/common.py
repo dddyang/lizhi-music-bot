@@ -19,6 +19,7 @@ from ui.cards import (
 )
 
 router = Router(name="common")
+router.message.filter(F.chat.type == "private")
 
 
 @router.message(Command("start", "menu"))

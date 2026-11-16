@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand, MenuButtonCommands, MenuButtonWebApp, WebAppInfo
+from aiogram.types import BotCommand, MenuButtonCommands
 
 from config import BOT_TOKEN
 from handlers import register_all_routers
@@ -27,17 +27,9 @@ logger = logging.getLogger("LiZhiMusicBot")
 
 async def configure_bot_ui(bot: Bot) -> None:
     """配置 Telegram 客户端左下角菜单按钮与快捷指令列表"""
-    enable_miniapp = os.getenv("ENABLE_MINIAPP", "false").strip().lower() in ("1", "true", "yes", "on")
     try:
-        if enable_miniapp:
-            miniapp_url = os.getenv("MINIAPP_URL", "https://lz.17013344.xyz").strip()
-            await bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(text="🎵 李志音乐", web_app=WebAppInfo(url=miniapp_url))
-            )
-            logger.info(f"✅ 已同步 Telegram 客户端左下角 Mini App 按钮: {miniapp_url}")
-        else:
-            await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-            logger.info("ℹ️ Mini App 服务暂未开启，已将客户端左下角切回普通命令菜单 (MenuButtonCommands)")
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        logger.info("✅ 已同步 Telegram 客户端左下角为原生命令菜单 (MenuButtonCommands)")
     except Exception as e:
         logger.warning(f"设置 MenuButton 失败: {e}")
 
@@ -72,7 +64,11 @@ async def start_bot() -> None:
 
     while True:
         try:
-            await dp.start_polling(bot)
+            # 显式允许 chat_member 状态更新，确保入群监听 100% 命中
+            allowed_updates = dp.resolve_used_update_types()
+            if "chat_member" not in allowed_updates:
+                allowed_updates.append("chat_member")
+            await dp.start_polling(bot, allowed_updates=allowed_updates)
         except (KeyboardInterrupt, SystemExit):
             break
         except Exception as e:

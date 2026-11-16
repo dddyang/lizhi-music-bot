@@ -18,6 +18,7 @@ from ui.cards import (
 
 logger = logging.getLogger("LiZhiMusicBot.Video")
 router = Router(name="video")
+router.message.filter(F.chat.type == "private")
 
 
 @router.message(Command("video"))

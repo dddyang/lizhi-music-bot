@@ -9,8 +9,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from constants import (
     BOOTLEG_AND_FAN_ALBUMS,
-    CITIES,
-    ERA_MAPPING,
     JAPAN_ALBUMS,
     OFFICIAL_LIVE_ALBUMS,
     SELECTION_AND_TOUR_ALBUMS,
@@ -82,44 +80,36 @@ def get_welcome_text(stats: dict, v_stats: dict) -> str:
     albums_cnt = stats.get("albums", 0)
     videos_cnt = v_stats.get("videos", 0)
     return (
-        f"🎸 **李志硬核随身点播站 · Li Zhi Music Station**\n"
+        f"🎸 **李志随身点播站 · 1701 声音档案**\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"🎙️ **音乐人**：李志\n"
         f"💿 **唱片收录**：`{albums_cnt}` 张全集 (2004 — 2025 编年史)\n"
-        f"🎵 **曲目收录**：`{songs_cnt}` 首 (高保真音轨 · 双轨纯净歌词)\n"
-        f"🎬 **影音专区**：`{videos_cnt}` 部 (全场跨年/巡演纪录片/逼哥夜话)\n"
-        f"📻 **官方频道**：[点击进入李志音乐分享频道](https://t.me/libimusic)\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💡 **快捷点播导览 (所有功能单消息内流转)：**\n"
-        f"• 🔍 **智能点播**：直接发送歌名、视频名或拼音缩写（如 `关于郑州`、`fgxs`、`夜话`、`跨年`）\n"
-        f"• 💿 **五大专辑分类**：录音室全集、官方现场Live、日本唱片与东京现场、民间现场合辑与编年史总览\n"
-        f"• 🏙️ **城市地标**：一键收听南京、郑州、兰州、成都等音乐地标金曲\n"
-        f"• ⏳ **年代时光机**：按 2004~2025 创作阶段分类聆听时代演变\n"
-        f"• 🎬 **原画影音**：74 部原画视频免下载流媒体秒级在线观看"
+        f"🎵 **曲目收录**：`{songs_cnt}` 首 (母带级音轨 · 双轨纯净歌词)\n"
+        f"🎬 **原画影院**：`{videos_cnt}` 部 (历年跨年/叁叁肆纪录片/夜话全集)\n"
+        f"📻 **官方频道**：[1701 音乐馆 (@libimusic)](https://t.me/libimusic)\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 **使用指南**：直接在此发送歌名或拼音（如 `梵高先生`、`fgxs`、`跨年`）即可秒速点播！"
     )
 
 
 def get_main_menu_markup() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔍 智能搜歌搜视频指南 (拼音/歌名/大片)", callback_data="search_guide"))
-    builder.row(InlineKeyboardButton(text="🎲 随缘一曲 · 听听逼哥 (随机盲盒)", callback_data="random:track"))
+    builder.row(
+        InlineKeyboardButton(text="🎲 随缘一曲 (盲盒)", callback_data="random:track"),
+        InlineKeyboardButton(text="🎬 74部原画影院", callback_data="menu:video")
+    )
     builder.row(
         InlineKeyboardButton(text="💿 经典录音室全集 (9张)", callback_data="cat:studio"),
         InlineKeyboardButton(text="🎸 官方现场Live (15张)", callback_data="cat:live")
     )
     builder.row(
-        InlineKeyboardButton(text="🇯🇵 日本唱片与东京现场 (4张)", callback_data="cat:japan"),
+        InlineKeyboardButton(text="🇯🇵 日本与东京现场 (4张)", callback_data="cat:japan"),
         InlineKeyboardButton(text="🗂️ 民间现场与合辑 (7张)", callback_data="cat:bootleg")
     )
     builder.row(
         InlineKeyboardButton(text="📅 35张全集编年史", callback_data="cat:chronology"),
-        InlineKeyboardButton(text="⏳ 20年创作年代时光机", callback_data="menu:era")
+        InlineKeyboardButton(text="🔍 智能搜歌指南", callback_data="search_guide")
     )
-    builder.row(
-        InlineKeyboardButton(text="🏙️ 城市地标点播专区", callback_data="menu:city"),
-        InlineKeyboardButton(text="🎬 74部高清原画影音专区", callback_data="menu:video")
-    )
-    builder.row(InlineKeyboardButton(text="📢 官方音乐频道 @libimusic", url="https://t.me/libimusic"))
+    builder.row(InlineKeyboardButton(text="📻 1701 音乐馆频道 @libimusic", url="https://t.me/libimusic"))
     return builder.as_markup()
 
 
@@ -137,36 +127,6 @@ def get_search_guide_view(bot_username: str) -> Tuple[str, InlineKeyboardMarkup]
     )
     return text, home_only_markup()
 
-
-def get_city_menu_view() -> Tuple[str, InlineKeyboardMarkup]:
-    builder = InlineKeyboardBuilder()
-    for c in CITIES:
-        songs = db.get_songs_by_city(c)
-        builder.button(text=f"🏙️ {c} ({len(songs)}首)", callback_data=f"city:{c}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))
-    text = (
-        "🏙️ **李志城市地标点播专区 · City Landmark Music**\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "李志的音乐里刻满了城市的温度与记忆。\n"
-        "请挑选你想聆听的城市地标金曲："
-    )
-    return text, builder.as_markup()
-
-
-def get_era_menu_view() -> Tuple[str, InlineKeyboardMarkup]:
-    builder = InlineKeyboardBuilder()
-    for k, v in ERA_MAPPING.items():
-        builder.button(text=v["title"], callback_data=f"era:{k}")
-    builder.adjust(1)
-    builder.row(InlineKeyboardButton(text="🏠 返回主菜单", callback_data="main_menu"))
-    text = (
-        "⏳ **李志 20 年创作年代时光机 · Time Machine**\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "回溯李志 2004 — 2025 年 20 年音乐探索历程。\n"
-        "请选择你想穿梭的创作年代："
-    )
-    return text, builder.as_markup()
 
 
 def get_video_archive_view() -> Tuple[str, InlineKeyboardMarkup]:

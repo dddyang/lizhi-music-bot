@@ -35,12 +35,9 @@ async def configure_bot_ui(bot: Bot) -> None:
 
     try:
         await bot.set_my_commands([
-            BotCommand(command="start", description="🏠 主控制台与点播中心"),
-            BotCommand(command="video", description="🎬 74部高清原画影音专区"),
-            BotCommand(command="city", description="🏙️ 城市地标点播专区"),
-            BotCommand(command="era", description="⏳ 20年创作年代时光机"),
-            BotCommand(command="search", description="🔍 搜歌搜视频指南"),
-            BotCommand(command="sync", description="🔄 曲库与影音同步状态")
+            BotCommand(command="start", description="🏠 随身点播主页"),
+            BotCommand(command="video", description="🎬 74部高清原画影院"),
+            BotCommand(command="search", description="🔍 智能搜歌指南")
         ])
     except Exception as e:
         logger.warning(f"设置快捷指令菜单失败: {e}")
